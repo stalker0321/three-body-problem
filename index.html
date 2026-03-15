@@ -35,6 +35,14 @@
                 <strong id="yearCount">0</strong>
               </article>
             </div>
+            <div class="time-controls-block">
+              <span class="stat-label">Скорость времени</span>
+              <div class="time-controls" aria-label="Скорость времени">
+                <button type="button" class="time-button" data-speed="1">1x</button>
+                <button type="button" class="time-button is-active" data-speed="2">2x</button>
+                <button type="button" class="time-button" data-speed="4">4x</button>
+              </div>
+            </div>
             <p id="systemStatus" class="scene-panel-note">Система стабильна</p>
           </section>
           <aside class="scene-overlay">
@@ -50,6 +58,7 @@
                   <strong id="civilizationAge">0</strong>
                 </article>
               </div>
+              <p id="civilizationDeathNotice" class="civilization-death-notice" hidden>Цивилизация мертва</p>
               <div class="overlay-divider"></div>
               <p class="eyebrow">Климат</p>
               <strong id="climateState">Умеренно</strong>

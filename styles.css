@@ -181,6 +181,36 @@ h1 {
   font-size: 0.9rem;
 }
 
+.time-controls-block {
+  margin-top: 14px;
+}
+
+.time-controls {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.time-button {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.time-button.is-active {
+  color: var(--text);
+  border-color: rgba(247, 221, 122, 0.4);
+  background: rgba(247, 221, 122, 0.14);
+}
+
 .civilization-banner.is-burn {
   border-color: rgba(255, 132, 72, 0.42);
   box-shadow: 0 16px 40px rgba(255, 132, 72, 0.16);
@@ -226,6 +256,18 @@ h1 {
   height: 1px;
   margin: 14px 0 12px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03));
+}
+
+.civilization-death-notice {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(255, 96, 72, 0.12);
+  border: 1px solid rgba(255, 96, 72, 0.22);
+  color: #ffd6ce;
+  font-size: 0.84rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .overlay-card p:last-child {
@@ -317,5 +359,9 @@ h1 {
   .overlay-metrics {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .time-controls {
+    flex-wrap: wrap;
   }
 }
