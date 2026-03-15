@@ -22,17 +22,18 @@ const CIVILIZATION_REBIRTH_MS = 10000;
 const CIVILIZATION_BANNER_MS = 2600;
 const CIVILIZATION_DEATH_PULSE_MS = 1000;
 const CIVILIZATION_REBIRTH_PULSE_MS = 1400;
-const CIVILIZATION_REBIRTH_TEMPERATURE = 0.4;
+const CIVILIZATION_REBIRTH_TEMPERATURE = 0.2;
 const FREEZE_DEATH_PULSE_MS = 360;
 const FREEZE_DEATH_PULSE_COUNT = 3;
 const INNER_BINARY_YEARS_PER_ORBIT = 79.9;
 const YEAR_TIME_DIVISOR = 5;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
-const SAFE_FLUX_MIN = 0.82;
+const SAFE_FLUX_MIN = 0.72;
 const SAFE_FLUX_MAX = 1.28;
 const CLIMATE_RECOVERY_RATE = 22;
-const CLIMATE_PRESSURE_RATE = 58;
+const HEAT_PRESSURE_RATE = 58;
+const COLD_PRESSURE_RATE = 40;
 const CLIMATE_LIMIT = 100;
 const PLANET_START_RADIUS = 24;
 const PLANET_START_ELLIPSE = 0.98;
@@ -322,7 +323,7 @@ function updateClimateUi(flux, climateBalance) {
   if (climateBalance >= 65 || flux > SAFE_FLUX_MAX * 1.18) {
     label = "Жарко";
     detail = "Цивилизация перегревается";
-  } else if (climateBalance <= -65 || flux < SAFE_FLUX_MIN * 0.86) {
+  } else if (climateBalance <= -65 || flux < SAFE_FLUX_MIN * 0.8) {
     label = "Холодно";
     detail = "Цивилизация промерзает";
   } else if (flux > SAFE_FLUX_MAX) {
@@ -446,12 +447,12 @@ function updateClimate(deltaSeconds, positions) {
   if (flux > SAFE_FLUX_MAX) {
     state.climateBalance = Math.min(
       CLIMATE_LIMIT,
-      state.climateBalance + (flux - SAFE_FLUX_MAX) * CLIMATE_PRESSURE_RATE * deltaSeconds
+      state.climateBalance + (flux - SAFE_FLUX_MAX) * HEAT_PRESSURE_RATE * deltaSeconds
     );
   } else if (flux < SAFE_FLUX_MIN) {
     state.climateBalance = Math.max(
       -CLIMATE_LIMIT,
-      state.climateBalance - (SAFE_FLUX_MIN - flux) * CLIMATE_PRESSURE_RATE * deltaSeconds
+      state.climateBalance - (SAFE_FLUX_MIN - flux) * COLD_PRESSURE_RATE * deltaSeconds
     );
   } else if (state.climateBalance > 0) {
     state.climateBalance = Math.max(0, state.climateBalance - CLIMATE_RECOVERY_RATE * deltaSeconds);
