@@ -38,6 +38,9 @@ const CLIMATE_RECOVERY_RATE = 22;
 const HEAT_PRESSURE_RATE = 58;
 const COLD_PRESSURE_RATE = 40;
 const CLIMATE_LIMIT = 100;
+const PLANET_INTERACTION_RADIUS = 190;
+const PLANET_ESCAPE_RADIUS = 760;
+const PLANET_ESCAPE_YEARS = 800;
 const PLANET_START_RADIUS = 24;
 const PLANET_START_ELLIPSE = 0.98;
 const PLANET_START_ANGLE = Math.PI * 0.32;
@@ -69,6 +72,8 @@ const state = {
   rebirthPulseStartMs: 0,
   rebirthPulseUntilMs: 0,
   bannerUntilMs: 0,
+  epochCivilizations: [],
+  lastPlanetInteractionTimeSeconds: 0,
 };
 
 const stars = [
@@ -131,7 +136,7 @@ function createEpochConfig() {
     innerSpeedScale: randomRange(0.98, 1.035),
     outerSpeedScale: randomRange(0.97, 1.035),
     innerVerticalScale: randomRange(0.88, 0.96),
-    outerVerticalScale: randomRange(0.56, 0.68),
+    outerVerticalScale: randomRange(0.48, 0.58),
     binaryScale: randomRange(0.97, 1.03),
     outerScale: randomRange(0.98, 1.05),
   };
@@ -378,6 +383,12 @@ function recordCivilizationResult(reason) {
   }
 
   const years = getCivilizationYears();
+  state.epochCivilizations.push({
+    globalCivilization: Math.max(1, state.civilizations),
+    epochCivilization: state.epochCivilizations.length + 1,
+    years,
+    reason,
+  });
   state.previousCivilizationYears = years;
   state.topCivilizations.push({
     years,
@@ -391,13 +402,37 @@ function recordCivilizationResult(reason) {
   renderCivilizationRanking();
 }
 
-function finalizeEpoch() {
+function persistEpochStats(payload) {
+  if (!window.fetch || !window.location || window.location.protocol === "file:") {
+    return;
+  }
+
+  fetch("/api/epoch-stats", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch((error) => {
+    console.warn("Failed to persist epoch stats", error);
+  });
+}
+
+function finalizeEpoch(endReason) {
   if (!state.epoch) {
     return;
   }
 
   const years = getYearsElapsed(state.simulationTimeSeconds - state.epochStartTimeSeconds);
   state.previousEpochYears = years;
+  persistEpochStats({
+    epoch: Math.max(1, state.epochs),
+    years,
+    endReason,
+    civilizationCount: state.epochCivilizations.length,
+    civilizations: state.epochCivilizations.map((entry) => ({ ...entry })),
+  });
 }
 
 function beginCivilization(timeMs, options = {}) {
@@ -516,6 +551,7 @@ function initializePlanet(epoch) {
     vx: hostVelocity.x + tangent.x * orbitalSpeed + radial.x * PLANET_START_IMPULSE,
     vy: hostVelocity.y + tangent.y * orbitalSpeed + radial.y * PLANET_START_IMPULSE,
   };
+  state.lastPlanetInteractionTimeSeconds = state.simulationTimeSeconds;
 }
 
 function startEpoch(timeMs, options = {}) {
@@ -533,6 +569,7 @@ function startEpoch(timeMs, options = {}) {
   }
   state.epoch = createEpochConfig();
   state.epochStartTimeSeconds = state.simulationTimeSeconds;
+  state.epochCivilizations = [];
   state.climateBalance = 0;
   clearTrails();
   initializePlanet(state.epoch);
@@ -628,19 +665,19 @@ function createFragments(origin, velocity, color, baseSize, count, spread) {
 }
 
 function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
-  finalizeEpoch();
+  const eventReason =
+    mode === "impact"
+      ? `Планета упала на ${stars[starIndex].name}`
+      : `Планета разорвана у ${stars[starIndex].name}`;
   if (state.civilizationAlive) {
-    recordCivilizationResult(
-      mode === "impact"
-        ? `Планета упала на ${stars[starIndex].name}`
-        : `Планета разорвана у ${stars[starIndex].name}`
-    );
+    recordCivilizationResult(eventReason);
     state.civilizationAlive = false;
     state.civilizationStartTimeSeconds = 0;
     queueCivilizationRebirth(timeMs);
     updateCivilizationAge();
     updateCivilizationStateUi();
   }
+  finalizeEpoch(eventReason);
   const starPosition = positions[starIndex];
   const planetPosition = { x: state.planet.x, y: state.planet.y };
   const impactAngle = Math.atan2(planetPosition.y - starPosition.y, planetPosition.x - starPosition.x);
@@ -670,11 +707,33 @@ function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
   };
   state.planet = null;
   updateStatus(
-    mode === "impact"
-      ? `Планета упала на ${stars[starIndex].name}`
-      : `Планета разорвана у ${stars[starIndex].name}`,
+    eventReason,
     state.event.restartAtMs
   );
+}
+
+function startPlanetEscapeEvent(timeMs, positions) {
+  const eventReason = "Планета выброшена из системы";
+  if (state.civilizationAlive) {
+    recordCivilizationResult(eventReason);
+    state.civilizationAlive = false;
+    state.civilizationStartTimeSeconds = 0;
+    queueCivilizationRebirth(timeMs);
+    updateCivilizationAge();
+    updateCivilizationStateUi();
+  }
+  finalizeEpoch(eventReason);
+  state.event = {
+    type: "planetEscape",
+    startMs: timeMs,
+    restartAtMs: timeMs + PLANET_IMPACT_RESTART_MS,
+    positions: clonePositions(positions),
+    planetPosition: { x: state.planet.x, y: state.planet.y },
+    startSimulationTimeSeconds: state.simulationTimeSeconds,
+    incrementEpochs: true,
+  };
+  state.planet = null;
+  updateStatus(eventReason, state.event.restartAtMs);
 }
 
 function startClimateEvent(timeMs, positions, mode) {
@@ -696,17 +755,16 @@ function startClimateEvent(timeMs, positions, mode) {
 }
 
 function startStarCollisionEvent(timeMs, pair, positions) {
-  finalizeEpoch();
+  const eventReason = `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`;
   if (state.civilizationAlive) {
-    recordCivilizationResult(
-      `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`
-    );
+    recordCivilizationResult(eventReason);
     state.civilizationAlive = false;
     state.civilizationStartTimeSeconds = 0;
     queueCivilizationRebirth(timeMs);
     updateCivilizationAge();
     updateCivilizationStateUi();
   }
+  finalizeEpoch(eventReason);
   const time = state.simulationTimeSeconds - state.epochStartTimeSeconds;
   const velocities = getStarVelocities(time);
   const fragments = pair.flatMap((index) =>
@@ -735,6 +793,48 @@ function startStarCollisionEvent(timeMs, pair, positions) {
     `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`,
     state.event.restartAtMs
   );
+}
+
+function getPlanetNearestStarDistance(positions) {
+  if (!state.planet) {
+    return Infinity;
+  }
+
+  return positions.reduce((minimumDistance, point) => {
+    const dx = state.planet.x - point.x;
+    const dy = state.planet.y - point.y;
+    return Math.min(minimumDistance, Math.hypot(dx, dy));
+  }, Infinity);
+}
+
+function updatePlanetInteractionState(positions) {
+  if (!state.planet) {
+    return;
+  }
+
+  if (getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) {
+    state.lastPlanetInteractionTimeSeconds = state.simulationTimeSeconds;
+  }
+}
+
+function hasPlanetEscaped(positions) {
+  if (!state.planet) {
+    return false;
+  }
+
+  const distanceFromCenter = Math.hypot(state.planet.x, state.planet.y);
+  if (distanceFromCenter <= PLANET_ESCAPE_RADIUS) {
+    return false;
+  }
+
+  if (getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) {
+    return false;
+  }
+
+  const yearsSinceLastInteraction = getYearsElapsed(
+    state.simulationTimeSeconds - state.lastPlanetInteractionTimeSeconds
+  );
+  return yearsSinceLastInteraction >= PLANET_ESCAPE_YEARS;
 }
 
 function willPlanetImpactSoon(currentTime) {
@@ -1078,6 +1178,16 @@ function drawEventFrame(cx, cy, timeMs) {
     return;
   }
 
+  if (event.type === "planetEscape") {
+    if (event.planetPosition) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.18, 1 - progress);
+      drawPlanet(cx + event.planetPosition.x, cy + event.planetPosition.y);
+      ctx.restore();
+    }
+    return;
+  }
+
   if (event.type === "climateBurn" || event.type === "climateFreeze") {
     if (event.planetPosition) {
       drawPlanet(cx + event.planetPosition.x, cy + event.planetPosition.y);
@@ -1157,6 +1267,13 @@ function render(timeMs) {
     return;
   } else {
     advancePlanet(positions, simulationDeltaSeconds);
+    updatePlanetInteractionState(positions);
+    if (hasPlanetEscaped(positions)) {
+      startPlanetEscapeEvent(timeMs, positions);
+      drawEventFrame(cx, cy, timeMs);
+      requestAnimationFrame(render);
+      return;
+    }
   }
 
   updateClimate(simulationDeltaSeconds, positions);
