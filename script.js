@@ -26,7 +26,7 @@ const CIVILIZATION_REBIRTH_TEMPERATURE = 0.2;
 const FREEZE_DEATH_PULSE_MS = 360;
 const FREEZE_DEATH_PULSE_COUNT = 3;
 const INNER_BINARY_YEARS_PER_ORBIT = 79.9;
-const YEAR_TIME_DIVISOR = 5;
+const YEAR_TIME_DIVISOR = 2.5;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
 const SAFE_FLUX_MIN = 0.72;
@@ -41,7 +41,7 @@ const PLANET_START_ANGLE = Math.PI * 0.32;
 const PLANET_START_IMPULSE = 0;
 const state = {
   epochs: 0,
-  timeScale: 2,
+  timeScale: 4,
   simulationTimeSeconds: 0,
   epochStartTimeSeconds: 0,
   trailLength: 150,
