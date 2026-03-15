@@ -28,6 +28,8 @@ const CIVILIZATION_REBIRTH_TEMPERATURE = 0.2;
 const FREEZE_DEATH_PULSE_MS = 360;
 const FREEZE_DEATH_PULSE_COUNT = 3;
 const YEARS_PER_SIMULATION_SECOND = 3.5;
+const ALPHA_CENTAURI_AB_ECCENTRICITY = 0.52;
+const ALPHA_CENTAURI_AB_PERIASTRON_MARGIN = 1.45;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
 const SAFE_FLUX_MIN = 0.72;
@@ -135,32 +137,43 @@ function createEpochConfig() {
   };
 }
 
-function getStarPositions(time, epoch = state.epoch) {
-  const desiredInnerA = stars[0].orbit * epoch.binaryScale;
-  const desiredInnerB = stars[1].orbit * epoch.binaryScale;
-  const minInnerSeparation = stars[0].size + stars[1].size + 58;
-  const preferredOuterSeparation = Math.max(stars[2].orbit * epoch.outerScale, 180);
-  const minOuterSeparation = Math.max(minInnerSeparation * 3.6, 190);
-  const outerSeparation = Math.max(preferredOuterSeparation, minOuterSeparation);
+function solveEccentricAnomaly(meanAnomaly, eccentricity) {
+  const tau = Math.PI * 2;
+  let normalizedMeanAnomaly = meanAnomaly % tau;
+  if (normalizedMeanAnomaly < 0) {
+    normalizedMeanAnomaly += tau;
+  }
 
-  let innerA = desiredInnerA;
-  let innerB = desiredInnerB;
-  let innerSeparation = innerA + innerB;
-  if (innerSeparation < minInnerSeparation) {
-    const scaleUp = minInnerSeparation / innerSeparation;
-    innerA *= scaleUp;
-    innerB *= scaleUp;
-    innerSeparation = innerA + innerB;
+  let eccentricAnomaly =
+    eccentricity < 0.8 ? normalizedMeanAnomaly : Math.PI;
+
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    const delta =
+      (eccentricAnomaly - eccentricity * Math.sin(eccentricAnomaly) - normalizedMeanAnomaly) /
+      (1 - eccentricity * Math.cos(eccentricAnomaly));
+    eccentricAnomaly -= delta;
   }
-  const maxInnerSeparation = outerSeparation * 0.32;
-  if (innerSeparation > maxInnerSeparation) {
-    const scaleDown = maxInnerSeparation / innerSeparation;
-    innerA *= scaleDown;
-    innerB *= scaleDown;
-  }
+
+  return eccentricAnomaly;
+}
+
+function getStarPositions(time, epoch = state.epoch) {
+  const innerBaseRelativeSemiMajor = stars[0].orbit + stars[1].orbit;
+  const minInnerPeriastron =
+    (stars[0].size + stars[1].size) * ALPHA_CENTAURI_AB_PERIASTRON_MARGIN;
+  const preferredOuterSeparation = Math.max(stars[2].orbit * epoch.outerScale, 180);
+  const minOuterSeparation = Math.max(minInnerPeriastron * 3.6, 190);
+  const outerSeparation = Math.max(preferredOuterSeparation, minOuterSeparation);
 
   const massAB = stars[0].mass + stars[1].mass;
   const totalMass = massAB + stars[2].mass;
+  const safeInnerRelativeSemiMajor =
+    minInnerPeriastron / (1 - ALPHA_CENTAURI_AB_ECCENTRICITY);
+  const maxInnerRelativeSemiMajor = outerSeparation * 0.32;
+  const innerRelativeSemiMajor = Math.max(
+    safeInnerRelativeSemiMajor,
+    Math.min(innerBaseRelativeSemiMajor, maxInnerRelativeSemiMajor)
+  );
   const outerAngle = time * 0.07 * epoch.outerSpeedScale + epoch.outerPhase;
   const outerDirection = {
     x: Math.cos(outerAngle),
@@ -175,19 +188,26 @@ function getStarPositions(time, epoch = state.epoch) {
     y: outerDirection.y * outerSeparation * (massAB / totalMass),
   };
 
-  const innerAngle = time * 0.34 * epoch.innerSpeedScale + epoch.innerPhase;
-  const innerDirection = {
-    x: Math.cos(innerAngle),
-    y: Math.sin(innerAngle) * epoch.innerVerticalScale,
+  const innerMeanAnomaly = time * 0.34 + epoch.innerPhase;
+  const innerEccentricAnomaly = solveEccentricAnomaly(
+    innerMeanAnomaly,
+    ALPHA_CENTAURI_AB_ECCENTRICITY
+  );
+  const innerRelativePosition = {
+    x: innerRelativeSemiMajor * (Math.cos(innerEccentricAnomaly) - ALPHA_CENTAURI_AB_ECCENTRICITY),
+    y:
+      innerRelativeSemiMajor *
+      Math.sqrt(1 - ALPHA_CENTAURI_AB_ECCENTRICITY ** 2) *
+      Math.sin(innerEccentricAnomaly),
   };
   const positions = [
     {
-      x: pairCenter.x + innerDirection.x * innerA,
-      y: pairCenter.y + innerDirection.y * innerA,
+      x: pairCenter.x - innerRelativePosition.x * (stars[1].mass / massAB),
+      y: pairCenter.y - innerRelativePosition.y * (stars[1].mass / massAB),
     },
     {
-      x: pairCenter.x - innerDirection.x * innerB,
-      y: pairCenter.y - innerDirection.y * innerB,
+      x: pairCenter.x + innerRelativePosition.x * (stars[0].mass / massAB),
+      y: pairCenter.y + innerRelativePosition.y * (stars[0].mass / massAB),
     },
     starC,
   ];
