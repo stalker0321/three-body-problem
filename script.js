@@ -504,6 +504,7 @@ function startEpoch(timeMs, options = {}) {
     collisionPair = null,
     incrementEpochs = state.epochs === 0,
     statusText = "Система стабильна",
+    allowImmediateCivilizationRebirth = false,
   } = options;
 
   state.event = null;
@@ -518,6 +519,11 @@ function startEpoch(timeMs, options = {}) {
   initializePlanet(state.epoch);
   state.lastFlux = computeStellarFlux(getStarPositions(0, state.epoch));
   updateClimateUi(state.lastFlux, 0);
+  if (allowImmediateCivilizationRebirth) {
+    state.pendingRebirthAtMs = timeMs;
+    state.pendingRebirthReason = null;
+    state.deathPulseStartMs = 0;
+  }
 
   if (collisionPair) {
     updateStatus(`Коллапс ${stars[collisionPair[0]].name}-${stars[collisionPair[1]].name}. Новая эпоха`, timeMs + 2200);
@@ -1103,8 +1109,10 @@ function render(timeMs) {
 
   if (state.event) {
     if (timeMs >= state.event.restartAtMs) {
+      const restartEvent = state.event;
       startEpoch(timeMs, {
-        incrementEpochs: state.event.incrementEpochs,
+        incrementEpochs: restartEvent.incrementEpochs,
+        allowImmediateCivilizationRebirth: true,
       });
     } else {
       updateYearCount(state.event.startSimulationTimeSeconds - state.epochStartTimeSeconds);
