@@ -16,6 +16,8 @@ const TRAIL_SAMPLE_MS = 18;
 const PLANET_GRAVITY = 5200;
 const PLANET_SOFTENING = 18;
 const PLANET_MAX_SPEED = 260;
+const PLANET_INTEGRATION_STEP_SECONDS = 0.01;
+const PLANET_MAX_INTEGRATION_STEPS = 24;
 const PLANET_IMPACT_RESTART_MS = 1450;
 const STAR_COLLISION_RESTART_MS = 2200;
 const CIVILIZATION_REBIRTH_MS = 10000;
@@ -96,7 +98,7 @@ const stars = [
     halo: "rgba(255, 106, 61, 0.24)",
     size: 5.5,
     mass: 12,
-    orbit: 280,
+    orbit: 340,
     phase: (Math.PI * 4) / 3,
   },
 ];
@@ -489,7 +491,7 @@ function initializePlanet(epoch) {
     y: radial.x,
   };
   const orbitalSpeed =
-    Math.sqrt((PLANET_GRAVITY * stars[2].mass) / distance) * randomRange(0.92, 1.14);
+    Math.sqrt((PLANET_GRAVITY * stars[2].mass) / distance) * randomRange(0.98, 1.04);
 
   state.planet = {
     x: host.x + offset.x,
@@ -567,7 +569,10 @@ function advancePlanet(positions, deltaSeconds) {
     return;
   }
 
-  const steps = deltaSeconds > 0.022 ? 2 : 1;
+  const steps = Math.min(
+    PLANET_MAX_INTEGRATION_STEPS,
+    Math.max(1, Math.ceil(deltaSeconds / PLANET_INTEGRATION_STEP_SECONDS))
+  );
   const stepSeconds = deltaSeconds / steps;
 
   for (let step = 0; step < steps; step += 1) {
