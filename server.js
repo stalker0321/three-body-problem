@@ -1,12 +1,20 @@
-const http = require("http");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
+const { performance } = require("perf_hooks");
 
-const HOST = "127.0.0.1";
+const {
+  ALLOWED_TIME_SCALES,
+  SimulationEngine,
+} = require("./simulation-core");
+
+const HOST = "0.0.0.0";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const ROOT_DIR = __dirname;
 const LOG_DIR = path.join(ROOT_DIR, "local");
 const LOG_FILE = path.join(LOG_DIR, "epoch-stats.ndjson");
+const SIMULATION_TICK_MS = 1000 / 60;
+const SNAPSHOT_BROADCAST_MS = 1000 / 20;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -24,6 +32,18 @@ function ensureLogFile() {
   }
 }
 
+function appendEpochRecord(payload) {
+  const record = {
+    loggedAt: new Date().toISOString(),
+    ...payload,
+  };
+  fs.appendFile(LOG_FILE, `${JSON.stringify(record)}\n`, (error) => {
+    if (error) {
+      console.error("Failed to append epoch stats", error);
+    }
+  });
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -33,12 +53,19 @@ function sendJson(response, statusCode, payload) {
 }
 
 function resolveStaticPath(pathname) {
-  const requestedPath =
-    pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const requestedPath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
   const absolutePath = path.normalize(path.join(ROOT_DIR, requestedPath));
   const relativePath = path.relative(ROOT_DIR, absolutePath);
 
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  if (
+    relativePath === ".gitignore" ||
+    relativePath.startsWith(".git") ||
+    relativePath.startsWith("local/")
+  ) {
     return null;
   }
 
@@ -88,35 +115,111 @@ function collectRequestBody(request) {
   });
 }
 
-async function handleEpochStats(request, response) {
+function writeSseMessage(response, payload) {
+  response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+ensureLogFile();
+
+const simulation = new SimulationEngine({
+  onEpochFinalized: appendEpochRecord,
+});
+
+const streamClients = new Set();
+const startMs = performance.now();
+let lastStepAt = startMs;
+let lastBroadcastAt = startMs;
+
+function getSimulationNowMs() {
+  return performance.now() - startMs;
+}
+
+function getSnapshot() {
+  return simulation.getSnapshot();
+}
+
+function broadcastSnapshot() {
+  if (streamClients.size === 0) {
+    return;
+  }
+
+  const payload = getSnapshot();
+  streamClients.forEach((response) => {
+    writeSseMessage(response, payload);
+  });
+}
+
+function runSimulationStep() {
+  const currentPerformanceMs = performance.now();
+  const deltaMs = currentPerformanceMs - lastStepAt;
+  lastStepAt = currentPerformanceMs;
+
+  simulation.step(deltaMs, getSimulationNowMs());
+
+  if (currentPerformanceMs - lastBroadcastAt >= SNAPSHOT_BROADCAST_MS) {
+    lastBroadcastAt = currentPerformanceMs;
+    broadcastSnapshot();
+  }
+}
+
+setInterval(runSimulationStep, SIMULATION_TICK_MS);
+
+async function handleTimeScaleUpdate(request, response) {
   try {
     const rawBody = await collectRequestBody(request);
     const payload = JSON.parse(rawBody);
-    const record = {
-      loggedAt: new Date().toISOString(),
-      ...payload,
-    };
+    const desiredTimeScale = Number(payload.timeScale);
 
-    fs.appendFile(LOG_FILE, `${JSON.stringify(record)}\n`, (error) => {
-      if (error) {
-        sendJson(response, 500, { error: "Failed to write stats" });
-        return;
-      }
+    if (!ALLOWED_TIME_SCALES.includes(desiredTimeScale)) {
+      sendJson(response, 400, {
+        error: `timeScale must be one of ${ALLOWED_TIME_SCALES.join(", ")}`,
+      });
+      return;
+    }
 
-      sendJson(response, 202, { ok: true });
-    });
+    simulation.setTimeScale(desiredTimeScale);
+    const snapshot = getSnapshot();
+    broadcastSnapshot();
+    sendJson(response, 200, snapshot);
   } catch (error) {
     sendJson(response, 400, { error: error.message || "Invalid request" });
   }
 }
 
-ensureLogFile();
+function handleStateStream(request, response) {
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+  });
+  response.write("\n");
+
+  streamClients.add(response);
+  writeSseMessage(response, getSnapshot());
+
+  request.on("close", () => {
+    streamClients.delete(response);
+  });
+}
 
 const server = http.createServer((request, response) => {
-  const url = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
+  const url = new URL(
+    request.url,
+    `http://${request.headers.host || `${HOST}:${PORT}`}`
+  );
 
-  if (request.method === "POST" && url.pathname === "/api/epoch-stats") {
-    handleEpochStats(request, response);
+  if (request.method === "GET" && url.pathname === "/api/state") {
+    sendJson(response, 200, getSnapshot());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/stream") {
+    handleStateStream(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/time-scale") {
+    handleTimeScaleUpdate(request, response);
     return;
   }
 
