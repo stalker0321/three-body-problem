@@ -20,38 +20,37 @@
           </p>
         </div>
 
-        <div class="hero-stats">
-          <article class="stat-card">
-            <span class="stat-label">Цивилизаций</span>
-            <strong id="civilizationCount">0</strong>
-            <p id="systemStatus">Система стабильна</p>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">Лет</span>
-            <strong id="yearCount">0</strong>
-            <p>В текущей эпохе</p>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">Жизнь Цивилизации</span>
-            <strong id="civilizationAge">0</strong>
-            <p>Лет до текущего момента</p>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">Прошлая эпоха</span>
-            <strong id="previousEpochLength">0</strong>
-            <p>Лет до последнего коллапса</p>
-          </article>
-        </div>
-
         <div class="scene-frame">
           <canvas id="universe" width="960" height="720" aria-label="Симуляция трёх звёзд"></canvas>
-          <div class="scene-hud">
-            <span>Центр масс</span>
-            <div class="hud-dot"></div>
-          </div>
+          <div id="civilizationBanner" class="civilization-banner" hidden></div>
+          <section class="scene-panel scene-panel-left">
+            <p class="eyebrow">Эпоха системы</p>
+            <div class="scene-metrics">
+              <article class="scene-metric">
+                <span class="stat-label">Номер эпохи</span>
+                <strong id="epochCount">0</strong>
+              </article>
+              <article class="scene-metric">
+                <span class="stat-label">Возраст эпохи</span>
+                <strong id="yearCount">0</strong>
+              </article>
+            </div>
+            <p id="systemStatus" class="scene-panel-note">Система стабильна</p>
+          </section>
           <aside class="scene-overlay">
-            <div id="civilizationBanner" class="civilization-banner" hidden></div>
-            <section class="overlay-card">
+            <section class="overlay-card overlay-card-primary">
+              <p class="eyebrow">Цивилизация</p>
+              <div class="overlay-metrics">
+                <article class="overlay-metric">
+                  <span class="stat-label">Номер</span>
+                  <strong id="civilizationCount">0</strong>
+                </article>
+                <article class="overlay-metric">
+                  <span class="stat-label">Возраст</span>
+                  <strong id="civilizationAge">0</strong>
+                </article>
+              </div>
+              <div class="overlay-divider"></div>
               <p class="eyebrow">Климат</p>
               <strong id="climateState">Умеренно</strong>
               <p id="climateDetail">Поток в пределах жизни</p>

@@ -1,9 +1,9 @@
 const canvas = document.getElementById("universe");
 const ctx = canvas.getContext("2d");
+const epochCount = document.getElementById("epochCount");
 const civilizationCount = document.getElementById("civilizationCount");
 const yearCount = document.getElementById("yearCount");
 const civilizationAge = document.getElementById("civilizationAge");
-const previousEpochLength = document.getElementById("previousEpochLength");
 const epochRanking = document.getElementById("epochRanking");
 const climateState = document.getElementById("climateState");
 const climateDetail = document.getElementById("climateDetail");
@@ -31,6 +31,7 @@ const PLANET_START_ELLIPSE = 0.98;
 const PLANET_START_ANGLE = Math.PI * 0.32;
 const PLANET_START_IMPULSE = 0;
 const state = {
+  epochs: 0,
   trailLength: 150,
   civilizations: 0,
   epochStartMs: 0,
@@ -321,7 +322,7 @@ function renderEpochRanking() {
   epochRanking.innerHTML = state.longestEpochs
     .map(
       (entry, index) =>
-        `<li><strong>${formatYears(entry.years)} лет</strong> <span>эпоха ${entry.civilization}</span></li>`
+        `<li><strong>${formatYears(entry.years)} лет</strong> <span>эпоха ${entry.epoch}</span></li>`
     )
     .join("");
 }
@@ -333,10 +334,9 @@ function finalizeEpoch(timeMs) {
 
   const years = getYearsElapsed((timeMs - state.epochStartMs) * 0.001);
   state.previousEpochYears = years;
-  previousEpochLength.textContent = formatYears(years);
   state.longestEpochs.push({
     years,
-    civilization: Math.max(1, state.civilizations),
+    epoch: Math.max(1, state.epochs),
   });
   state.longestEpochs.sort((left, right) => right.years - left.years);
   state.longestEpochs = state.longestEpochs.slice(0, 10);
@@ -445,9 +445,18 @@ function initializePlanet(epoch) {
 }
 
 function startEpoch(timeMs, options = {}) {
-  const { collisionPair = null, incrementCivilizations = state.civilizations === 0, statusText = "Система стабильна" } = options;
+  const {
+    collisionPair = null,
+    incrementCivilizations = state.civilizations === 0,
+    incrementEpochs = state.epochs === 0,
+    statusText = "Система стабильна",
+  } = options;
 
   state.event = null;
+  if (incrementEpochs) {
+    state.epochs += 1;
+    epochCount.textContent = String(state.epochs);
+  }
   state.epoch = createEpochConfig();
   state.epochStartMs = timeMs;
   state.climateBalance = 0;
@@ -567,6 +576,7 @@ function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
     planetPosition,
     fragments,
     incrementCivilizations: true,
+    incrementEpochs: true,
   };
   state.planet = null;
   updateStatus(
@@ -618,6 +628,7 @@ function startStarCollisionEvent(timeMs, pair, positions) {
     positions: clonePositions(positions),
     fragments,
     incrementCivilizations: true,
+    incrementEpochs: true,
   };
   updateStatus(
     `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`,
@@ -1009,6 +1020,7 @@ function render(timeMs) {
     if (timeMs >= state.event.restartAtMs) {
       startEpoch(timeMs, {
         incrementCivilizations: state.event.incrementCivilizations,
+        incrementEpochs: state.event.incrementEpochs,
       });
     } else {
       updateYearCount((state.event.startMs - state.epochStartMs) * 0.001);
@@ -1088,6 +1100,6 @@ window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
 renderEpochRanking();
-previousEpochLength.textContent = "0";
+epochCount.textContent = "0";
 updateClimateUi(1, 0);
 requestAnimationFrame(render);

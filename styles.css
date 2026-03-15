@@ -89,42 +89,11 @@ h1 {
   color: var(--muted);
 }
 
-.hero-stats {
-  margin-top: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-
-.stat-card {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 240px;
-  padding: 14px 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
 .stat-label {
   font-size: 0.75rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-}
-
-.stat-card strong {
-  font-family: "Arial Rounded MT Bold", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  line-height: 0.95;
-}
-
-.stat-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
 }
 
 .scene-frame {
@@ -146,7 +115,7 @@ h1 {
 
 .scene-overlay {
   position: absolute;
-  top: 18px;
+  top: 88px;
   right: 18px;
   display: grid;
   gap: 12px;
@@ -154,8 +123,11 @@ h1 {
 }
 
 .civilization-banner {
-  justify-self: center;
-  width: min(460px, calc(100vw - 72px));
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 3;
+  width: min(460px, calc(100% - 180px));
   padding: 14px 18px;
   border-radius: 999px;
   background: rgba(7, 11, 19, 0.82);
@@ -165,6 +137,48 @@ h1 {
   font-size: 0.98rem;
   color: var(--text);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  transform: translateX(-50%);
+}
+
+.scene-panel {
+  position: absolute;
+  z-index: 2;
+  border-radius: 18px;
+  background: rgba(7, 11, 19, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.scene-panel-left {
+  top: 18px;
+  left: 18px;
+  width: min(288px, calc(100% - 36px));
+  padding: 14px 16px;
+}
+
+.scene-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.scene-metric {
+  min-width: 0;
+}
+
+.scene-metric strong,
+.overlay-card .overlay-metric strong {
+  display: block;
+  margin-top: 4px;
+  font-family: "Arial Rounded MT Bold", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+  font-size: 1.75rem;
+  line-height: 0.95;
+}
+
+.scene-panel-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .civilization-banner.is-burn {
@@ -197,32 +211,27 @@ h1 {
   font-size: 1.3rem;
 }
 
+.overlay-card-primary {
+  padding-top: 16px;
+}
+
+.overlay-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.overlay-divider {
+  height: 1px;
+  margin: 14px 0 12px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03));
+}
+
 .overlay-card p:last-child {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.92rem;
-}
-
-.scene-hud {
-  position: absolute;
-  top: 18px;
-  left: 18px;
-  display: inline-flex;
-  gap: 10px;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 999px;
-  background: rgba(7, 11, 19, 0.64);
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.hud-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 16px rgba(255, 255, 255, 0.8);
 }
 
 .epoch-ranking {
@@ -253,10 +262,6 @@ h1 {
   .hero {
     padding: 22px;
   }
-
-  .stat-card {
-    width: 100%;
-  }
 }
 
 @media (max-width: 640px) {
@@ -277,5 +282,23 @@ h1 {
     position: static;
     width: 100%;
     margin: 12px 0 0;
+  }
+
+  .civilization-banner {
+    top: 14px;
+    width: min(calc(100% - 24px), 460px);
+  }
+
+  .scene-panel-left {
+    top: 14px;
+    left: 14px;
+    width: min(248px, calc(100% - 28px));
+    padding: 12px 14px;
+  }
+
+  .scene-metrics,
+  .overlay-metrics {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }
