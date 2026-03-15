@@ -16,10 +16,11 @@ const PLANET_SOFTENING = 18;
 const PLANET_MAX_SPEED = 260;
 const PLANET_IMPACT_RESTART_MS = 1450;
 const STAR_COLLISION_RESTART_MS = 2200;
-const CIVILIZATION_REBIRTH_MS = 5000;
+const CIVILIZATION_REBIRTH_MS = 10000;
 const CIVILIZATION_BANNER_MS = 2600;
 const CIVILIZATION_DEATH_PULSE_MS = 1000;
 const CIVILIZATION_REBIRTH_PULSE_MS = 1400;
+const CIVILIZATION_REBIRTH_TEMPERATURE = 0.4;
 const INNER_BINARY_YEARS_PER_ORBIT = 79.9;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
@@ -388,16 +389,20 @@ function beginCivilization(timeMs, options = {}) {
   }
 }
 
+function queueCivilizationRebirth(timeMs, reasonVariant = null) {
+  state.pendingRebirthAtMs = timeMs + CIVILIZATION_REBIRTH_MS;
+  state.pendingRebirthReason = reasonVariant;
+  state.deathPulseStartMs = timeMs;
+}
+
 function endCivilization(timeMs, reasonText, reasonVariant, historyReason = reasonText) {
   recordCivilizationResult(timeMs, historyReason);
   state.previousCivilizationYears = getCivilizationYears(timeMs);
   state.civilizationAlive = false;
   state.civilizationStartMs = 0;
-  state.pendingRebirthAtMs = timeMs + CIVILIZATION_REBIRTH_MS;
-  state.pendingRebirthReason = reasonVariant;
-  state.deathPulseStartMs = timeMs;
+  queueCivilizationRebirth(timeMs, reasonVariant);
   updateCivilizationAge(timeMs);
-  showCivilizationBanner(reasonText, reasonVariant, state.pendingRebirthAtMs);
+  showCivilizationBanner(reasonText, reasonVariant, timeMs + CIVILIZATION_BANNER_MS);
 }
 
 function computeStellarFlux(positions) {
@@ -475,7 +480,6 @@ function initializePlanet(epoch) {
 function startEpoch(timeMs, options = {}) {
   const {
     collisionPair = null,
-    incrementCivilizations = state.civilizations === 0,
     incrementEpochs = state.epochs === 0,
     statusText = "Система стабильна",
   } = options;
@@ -488,14 +492,10 @@ function startEpoch(timeMs, options = {}) {
   state.epoch = createEpochConfig();
   state.epochStartMs = timeMs;
   state.climateBalance = 0;
-  state.lastFlux = 1;
   clearTrails();
   initializePlanet(state.epoch);
-  updateClimateUi(1, 0);
-  beginCivilization(timeMs, {
-    incrementCount: incrementCivilizations,
-    showBannerText: incrementCivilizations && state.civilizations > 0 ? "Цивилизация вновь пустила свои корни" : null,
-  });
+  state.lastFlux = computeStellarFlux(getStarPositions(0, state.epoch));
+  updateClimateUi(state.lastFlux, 0);
 
   if (collisionPair) {
     updateStatus(`Коллапс ${stars[collisionPair[0]].name}-${stars[collisionPair[1]].name}. Новая эпоха`, timeMs + 2200);
@@ -588,6 +588,7 @@ function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
     );
     state.civilizationAlive = false;
     state.civilizationStartMs = 0;
+    queueCivilizationRebirth(timeMs);
     updateCivilizationAge(timeMs);
   }
   const starPosition = positions[starIndex];
@@ -614,7 +615,6 @@ function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
     impactAngle,
     planetPosition,
     fragments,
-    incrementCivilizations: true,
     incrementEpochs: true,
   };
   state.planet = null;
@@ -653,6 +653,7 @@ function startStarCollisionEvent(timeMs, pair, positions) {
     );
     state.civilizationAlive = false;
     state.civilizationStartMs = 0;
+    queueCivilizationRebirth(timeMs);
     updateCivilizationAge(timeMs);
   }
   const time = (timeMs - state.epochStartMs) * 0.001;
@@ -676,7 +677,6 @@ function startStarCollisionEvent(timeMs, pair, positions) {
     collisionPair: pair,
     positions: clonePositions(positions),
     fragments,
-    incrementCivilizations: true,
     incrementEpochs: true,
   };
   updateStatus(
@@ -1047,6 +1047,18 @@ function isPlanetVisible() {
   return Math.hypot(state.planet.x, state.planet.y) < 520;
 }
 
+function canBeginCivilization(timeMs) {
+  if (state.civilizationAlive || state.lastFlux < CIVILIZATION_REBIRTH_TEMPERATURE) {
+    return false;
+  }
+
+  if (state.civilizations === 0 && !state.pendingRebirthAtMs) {
+    return true;
+  }
+
+  return Boolean(state.pendingRebirthAtMs && timeMs >= state.pendingRebirthAtMs);
+}
+
 function render(timeMs) {
   if (!state.epoch) {
     startEpoch(timeMs);
@@ -1056,12 +1068,6 @@ function render(timeMs) {
   }
   if (!state.event && state.statusUntilMs && timeMs >= state.statusUntilMs) {
     updateStatus("Система стабильна");
-  }
-  if (!state.event && !state.civilizationAlive && state.pendingRebirthAtMs && timeMs >= state.pendingRebirthAtMs) {
-    beginCivilization(timeMs, {
-      incrementCount: true,
-      showBannerText: "Цивилизация вновь пустила свои корни",
-    });
   }
   const deltaSeconds = state.lastFrameMs ? Math.min((timeMs - state.lastFrameMs) * 0.001, 0.033) : 0;
   state.lastFrameMs = timeMs;
@@ -1077,7 +1083,6 @@ function render(timeMs) {
   if (state.event) {
     if (timeMs >= state.event.restartAtMs) {
       startEpoch(timeMs, {
-        incrementCivilizations: state.event.incrementCivilizations,
         incrementEpochs: state.event.incrementEpochs,
       });
     } else {
@@ -1103,6 +1108,12 @@ function render(timeMs) {
   }
 
   updateClimate(deltaSeconds, positions);
+  if (canBeginCivilization(timeMs)) {
+    beginCivilization(timeMs, {
+      incrementCount: true,
+      showBannerText: state.civilizations > 0 ? "Цивилизация вновь пустила свои корни" : null,
+    });
+  }
   if (state.civilizationAlive && state.climateBalance >= CLIMATE_LIMIT) {
     startClimateEvent(timeMs, positions, "burn");
   }
