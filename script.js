@@ -27,8 +27,7 @@ const CIVILIZATION_REBIRTH_PULSE_MS = 1400;
 const CIVILIZATION_REBIRTH_TEMPERATURE = 0.2;
 const FREEZE_DEATH_PULSE_MS = 360;
 const FREEZE_DEATH_PULSE_COUNT = 3;
-const INNER_BINARY_YEARS_PER_ORBIT = 79.9;
-const YEAR_TIME_DIVISOR = 2.5;
+const YEARS_PER_SIMULATION_SECOND = 3.5;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
 const SAFE_FLUX_MIN = 0.72;
@@ -270,9 +269,7 @@ function getYearsElapsed(simulationTimeSeconds) {
     return 0;
   }
 
-  const angularSpeed = 0.34 * state.epoch.innerSpeedScale;
-  const yearsPerSecond = ((INNER_BINARY_YEARS_PER_ORBIT * angularSpeed) / (Math.PI * 2)) / YEAR_TIME_DIVISOR;
-  return Math.max(0, simulationTimeSeconds * yearsPerSecond);
+  return Math.max(0, simulationTimeSeconds * YEARS_PER_SIMULATION_SECOND);
 }
 
 function formatYears(years) {
