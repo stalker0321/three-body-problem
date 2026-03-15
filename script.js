@@ -4,7 +4,7 @@ const epochCount = document.getElementById("epochCount");
 const civilizationCount = document.getElementById("civilizationCount");
 const yearCount = document.getElementById("yearCount");
 const civilizationAge = document.getElementById("civilizationAge");
-const epochRanking = document.getElementById("epochRanking");
+const civilizationRanking = document.getElementById("civilizationRanking");
 const climateState = document.getElementById("climateState");
 const climateDetail = document.getElementById("climateDetail");
 const civilizationBanner = document.getElementById("civilizationBanner");
@@ -18,6 +18,8 @@ const PLANET_IMPACT_RESTART_MS = 1450;
 const STAR_COLLISION_RESTART_MS = 2200;
 const CIVILIZATION_REBIRTH_MS = 5000;
 const CIVILIZATION_BANNER_MS = 2600;
+const CIVILIZATION_DEATH_PULSE_MS = 1000;
+const CIVILIZATION_REBIRTH_PULSE_MS = 1400;
 const INNER_BINARY_YEARS_PER_ORBIT = 79.9;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
@@ -42,14 +44,18 @@ const state = {
   planet: null,
   event: null,
   previousEpochYears: 0,
-  longestEpochs: [],
+  topCivilizations: [],
   climateBalance: 0,
   lastFlux: 1,
   civilizationAlive: false,
+  civilizationLogged: false,
   civilizationStartMs: 0,
   previousCivilizationYears: 0,
   pendingRebirthAtMs: 0,
   pendingRebirthReason: null,
+  deathPulseStartMs: 0,
+  rebirthPulseStartMs: 0,
+  rebirthPulseUntilMs: 0,
   bannerUntilMs: 0,
 };
 
@@ -313,18 +319,38 @@ function updateClimateUi(flux, climateBalance) {
   climateDetail.textContent = `${detail} · поток ${flux.toFixed(2)}`;
 }
 
-function renderEpochRanking() {
-  if (state.longestEpochs.length === 0) {
-    epochRanking.innerHTML = '<li class="epoch-ranking-empty">Пока нет завершённых эпох</li>';
+function renderCivilizationRanking() {
+  if (state.topCivilizations.length === 0) {
+    civilizationRanking.innerHTML =
+      '<li class="epoch-ranking-empty">Пока нет завершённых цивилизаций</li>';
     return;
   }
 
-  epochRanking.innerHTML = state.longestEpochs
+  civilizationRanking.innerHTML = state.topCivilizations
     .map(
-      (entry, index) =>
-        `<li><strong>${formatYears(entry.years)} лет</strong> <span>эпоха ${entry.epoch}</span></li>`
+      (entry) =>
+        `<li><strong>${formatYears(entry.years)} лет</strong><p>${entry.reason}</p><span>эпоха ${entry.epoch}, цивилизация ${entry.civilization}</span></li>`
     )
     .join("");
+}
+
+function recordCivilizationResult(timeMs, reason) {
+  if (state.civilizationLogged || state.civilizations === 0) {
+    return;
+  }
+
+  const years = getCivilizationYears(timeMs);
+  state.previousCivilizationYears = years;
+  state.topCivilizations.push({
+    years,
+    epoch: Math.max(1, state.epochs),
+    civilization: Math.max(1, state.civilizations),
+    reason,
+  });
+  state.topCivilizations.sort((left, right) => right.years - left.years);
+  state.topCivilizations = state.topCivilizations.slice(0, 10);
+  state.civilizationLogged = true;
+  renderCivilizationRanking();
 }
 
 function finalizeEpoch(timeMs) {
@@ -334,22 +360,17 @@ function finalizeEpoch(timeMs) {
 
   const years = getYearsElapsed((timeMs - state.epochStartMs) * 0.001);
   state.previousEpochYears = years;
-  state.longestEpochs.push({
-    years,
-    epoch: Math.max(1, state.epochs),
-  });
-  state.longestEpochs.sort((left, right) => right.years - left.years);
-  state.longestEpochs = state.longestEpochs.slice(0, 10);
-  renderEpochRanking();
 }
 
 function beginCivilization(timeMs, options = {}) {
   const { incrementCount = true, showBannerText = null } = options;
   state.civilizationAlive = true;
+  state.civilizationLogged = false;
   state.civilizationStartMs = timeMs;
   state.previousCivilizationYears = 0;
   state.pendingRebirthAtMs = 0;
   state.pendingRebirthReason = null;
+  state.deathPulseStartMs = 0;
   state.climateBalance = 0;
 
   if (incrementCount) {
@@ -358,16 +379,23 @@ function beginCivilization(timeMs, options = {}) {
   }
 
   if (showBannerText) {
+    state.rebirthPulseStartMs = timeMs;
+    state.rebirthPulseUntilMs = timeMs + CIVILIZATION_REBIRTH_PULSE_MS;
     showCivilizationBanner(showBannerText, "rebirth", timeMs + CIVILIZATION_BANNER_MS);
+  } else {
+    state.rebirthPulseStartMs = 0;
+    state.rebirthPulseUntilMs = 0;
   }
 }
 
-function endCivilization(timeMs, reasonText, reasonVariant) {
+function endCivilization(timeMs, reasonText, reasonVariant, historyReason = reasonText) {
+  recordCivilizationResult(timeMs, historyReason);
   state.previousCivilizationYears = getCivilizationYears(timeMs);
   state.civilizationAlive = false;
   state.civilizationStartMs = 0;
   state.pendingRebirthAtMs = timeMs + CIVILIZATION_REBIRTH_MS;
   state.pendingRebirthReason = reasonVariant;
+  state.deathPulseStartMs = timeMs;
   updateCivilizationAge(timeMs);
   showCivilizationBanner(reasonText, reasonVariant, state.pendingRebirthAtMs);
 }
@@ -551,6 +579,17 @@ function createFragments(origin, velocity, color, baseSize, count, spread) {
 
 function startPlanetDeathEvent(timeMs, starIndex, positions, mode) {
   finalizeEpoch(timeMs);
+  if (state.civilizationAlive) {
+    recordCivilizationResult(
+      timeMs,
+      mode === "impact"
+        ? `Планета упала на ${stars[starIndex].name}`
+        : `Планета разорвана у ${stars[starIndex].name}`
+    );
+    state.civilizationAlive = false;
+    state.civilizationStartMs = 0;
+    updateCivilizationAge(timeMs);
+  }
   const starPosition = positions[starIndex];
   const planetPosition = { x: state.planet.x, y: state.planet.y };
   const impactAngle = Math.atan2(planetPosition.y - starPosition.y, planetPosition.x - starPosition.x);
@@ -596,7 +635,8 @@ function startClimateEvent(timeMs, positions, mode) {
   endCivilization(
     timeMs,
     mode === "burn" ? "Цивилизация погибла: планета сгорела" : "Цивилизация погибла: планета замёрзла",
-    mode === "burn" ? "burn" : "freeze"
+    mode === "burn" ? "burn" : "freeze",
+    mode === "burn" ? "Сгорела от жары" : "Замёрзла"
   );
   updateStatus(
     mode === "burn" ? "Цивилизация сгорела от жары" : "Цивилизация замёрзла",
@@ -606,6 +646,15 @@ function startClimateEvent(timeMs, positions, mode) {
 
 function startStarCollisionEvent(timeMs, pair, positions) {
   finalizeEpoch(timeMs);
+  if (state.civilizationAlive) {
+    recordCivilizationResult(
+      timeMs,
+      `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`
+    );
+    state.civilizationAlive = false;
+    state.civilizationStartMs = 0;
+    updateCivilizationAge(timeMs);
+  }
   const time = (timeMs - state.epochStartMs) * 0.001;
   const velocities = getStarVelocities(time);
   const fragments = pair.flatMap((index) =>
@@ -890,12 +939,13 @@ function drawPlanetImpactFlash(x, y, star, angle, progress) {
 
 function drawClimatePulse(x, y, mode, progress) {
   const pulse = 0.35 + Math.sin(progress * Math.PI) * 0.65;
-  const color = mode === "climateBurn" ? "255, 132, 72" : "145, 209, 255";
-  const radius = planetStyle.size * (6 + pulse * 8);
+  const color =
+    mode === "climateBurn" ? "255, 96, 72" : mode === "climateFreeze" ? "145, 209, 255" : "102, 236, 143";
+  const radius = planetStyle.size * (mode === "rebirth" ? 5 + pulse * 7 : 6 + pulse * 8);
 
   const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
-  glow.addColorStop(0, `rgba(${color}, ${0.38 * pulse})`);
-  glow.addColorStop(0.5, `rgba(${color}, ${0.16 * pulse})`);
+  glow.addColorStop(0, `rgba(${color}, ${mode === "rebirth" ? 0.42 * pulse : 0.38 * pulse})`);
+  glow.addColorStop(0.5, `rgba(${color}, ${mode === "rebirth" ? 0.2 * pulse : 0.16 * pulse})`);
   glow.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = glow;
   ctx.beginPath();
@@ -907,6 +957,14 @@ function drawClimatePulse(x, y, mode, progress) {
   ctx.beginPath();
   ctx.arc(x, y, planetStyle.size * (1.8 + pulse * 1.7), 0, Math.PI * 2);
   ctx.stroke();
+
+  if (mode === "rebirth") {
+    ctx.strokeStyle = `rgba(${color}, ${0.45 * pulse})`;
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.arc(x, y, planetStyle.size * (3 + pulse * 3.4), 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function drawFragments(cx, cy, fragments, timeMs, startMs, restartAtMs) {
@@ -1088,7 +1146,14 @@ function render(timeMs) {
         cx + state.planet.x,
         cy + state.planet.y,
         state.pendingRebirthReason === "burn" ? "climateBurn" : "climateFreeze",
-        Math.min(1, (timeMs % 1800) / 1800)
+        ((timeMs - state.deathPulseStartMs) % CIVILIZATION_DEATH_PULSE_MS) / CIVILIZATION_DEATH_PULSE_MS
+      );
+    } else if (state.civilizationAlive && state.rebirthPulseUntilMs > timeMs) {
+      drawClimatePulse(
+        cx + state.planet.x,
+        cy + state.planet.y,
+        "rebirth",
+        Math.min(1, (timeMs - state.rebirthPulseStartMs) / CIVILIZATION_REBIRTH_PULSE_MS)
       );
     }
   }
@@ -1099,7 +1164,7 @@ function render(timeMs) {
 window.addEventListener("resize", resizeCanvas);
 
 resizeCanvas();
-renderEpochRanking();
+renderCivilizationRanking();
 epochCount.textContent = "0";
 updateClimateUi(1, 0);
 requestAnimationFrame(render);
