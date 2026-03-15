@@ -41,7 +41,7 @@ const PLANET_START_ANGLE = Math.PI * 0.32;
 const PLANET_START_IMPULSE = 0;
 const state = {
   epochs: 0,
-  timeScale: 4,
+  timeScale: 1,
   simulationTimeSeconds: 0,
   epochStartTimeSeconds: 0,
   trailLength: 150,
