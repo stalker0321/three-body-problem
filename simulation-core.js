@@ -36,6 +36,7 @@ const PLANET_START_ORBIT_ECCENTRICITY = 0.15;
 const BINARY_HOST_START_HILL_RADIUS_FRACTION = 0.42;
 const BINARY_HOST_MAX_DISTANCE_FRACTION = 0.32;
 const BINARY_HOST_START_ORBIT_ECCENTRICITY = 0.08;
+const EARTHLIKE_BASELINE_TEMPERATURE_C = 15;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
 
@@ -120,8 +121,11 @@ function solveEccentricAnomaly(meanAnomaly, eccentricity) {
 }
 
 function getClimateSummary(flux, climateBalance) {
+  const temperatureCelsius =
+    (EARTHLIKE_BASELINE_TEMPERATURE_C + 273.15) * Math.pow(Math.max(flux, 0), 0.25) -
+    273.15;
   let label = "Умеренно";
-  let detail = "Поток в пределах жизни";
+  let detail = "Температура в пределах жизни";
 
   if (climateBalance >= 65 || flux > SAFE_FLUX_MAX * 1.18) {
     label = "Жарко";
@@ -139,8 +143,9 @@ function getClimateSummary(flux, climateBalance) {
 
   return {
     label,
-    detail: `${detail} · поток ${flux.toFixed(2)}`,
+    detail: `${detail} · ${temperatureCelsius >= 0 ? "+" : ""}${temperatureCelsius.toFixed(1)} °C`,
     flux,
+    temperatureCelsius,
     balance: climateBalance,
   };
 }
