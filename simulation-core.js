@@ -15,6 +15,10 @@ const FREEZE_DEATH_PULSE_COUNT = 3;
 const YEARS_PER_SIMULATION_SECOND = 3.5;
 const ALPHA_CENTAURI_AB_ECCENTRICITY = 0.52;
 const ALPHA_CENTAURI_AB_PERIASTRON_MARGIN = 1.45;
+const OUTER_ORBIT_ECCENTRICITY = 0.36;
+const OUTER_ORBIT_PERIASTRON = 350;
+const OUTER_ORBIT_ARGUMENT = -0.42;
+const OUTER_ORBIT_MEAN_MOTION = 0.07;
 const ROCHE_MULTIPLIERS = [1.15, 1.2, 1.35];
 const STAR_LUMINOSITIES = [3800, 1700, 460];
 const SAFE_FLUX_MIN = 0.72;
@@ -26,10 +30,8 @@ const CLIMATE_LIMIT = 100;
 const PLANET_INTERACTION_RADIUS = 190;
 const PLANET_ESCAPE_RADIUS = 760;
 const PLANET_ESCAPE_YEARS = 800;
-const PLANET_START_RADIUS = 24;
-const PLANET_START_ELLIPSE = 0.98;
-const PLANET_START_ANGLE = Math.PI * 0.32;
-const PLANET_START_IMPULSE = 0;
+const PLANET_START_HILL_RADIUS_FRACTION = 0.24;
+const PLANET_START_ORBIT_ECCENTRICITY = 0.15;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
 
@@ -82,12 +84,15 @@ function createEpochConfig() {
   return {
     innerPhase: randomRange(0, Math.PI * 2),
     outerPhase: randomRange(0, Math.PI * 2),
-    innerSpeedScale: randomRange(0.98, 1.035),
-    outerSpeedScale: randomRange(0.97, 1.035),
-    innerVerticalScale: randomRange(0.88, 0.96),
-    outerVerticalScale: randomRange(0.48, 0.58),
-    binaryScale: randomRange(0.97, 1.03),
-    outerScale: randomRange(0.98, 1.05),
+  };
+}
+
+function rotatePoint(point, angle) {
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return {
+    x: point.x * cosine - point.y * sine,
+    y: point.x * sine + point.y * cosine,
   };
 }
 
@@ -191,31 +196,45 @@ class SimulationEngine {
     const innerBaseRelativeSemiMajor = stars[0].orbit + stars[1].orbit;
     const minInnerPeriastron =
       (stars[0].size + stars[1].size) * ALPHA_CENTAURI_AB_PERIASTRON_MARGIN;
-    const preferredOuterSeparation = Math.max(stars[2].orbit * epoch.outerScale, 180);
-    const minOuterSeparation = Math.max(minInnerPeriastron * 3.6, 190);
-    const outerSeparation = Math.max(preferredOuterSeparation, minOuterSeparation);
-
     const massAB = stars[0].mass + stars[1].mass;
     const totalMass = massAB + stars[2].mass;
+    const outerRelativePeriastron = Math.max(
+      OUTER_ORBIT_PERIASTRON,
+      minInnerPeriastron * 3.9
+    );
+    const outerRelativeSemiMajor =
+      outerRelativePeriastron / (1 - OUTER_ORBIT_ECCENTRICITY);
     const safeInnerRelativeSemiMajor =
       minInnerPeriastron / (1 - ALPHA_CENTAURI_AB_ECCENTRICITY);
-    const maxInnerRelativeSemiMajor = outerSeparation * 0.32;
+    const maxInnerRelativeSemiMajor = outerRelativePeriastron * 0.28;
     const innerRelativeSemiMajor = Math.max(
       safeInnerRelativeSemiMajor,
       Math.min(innerBaseRelativeSemiMajor, maxInnerRelativeSemiMajor)
     );
-    const outerAngle = time * 0.07 * epoch.outerSpeedScale + epoch.outerPhase;
-    const outerDirection = {
-      x: Math.cos(outerAngle),
-      y: Math.sin(outerAngle) * epoch.outerVerticalScale,
-    };
+    const outerMeanAnomaly = time * OUTER_ORBIT_MEAN_MOTION + epoch.outerPhase;
+    const outerEccentricAnomaly = solveEccentricAnomaly(
+      outerMeanAnomaly,
+      OUTER_ORBIT_ECCENTRICITY
+    );
+    const outerRelativePosition = rotatePoint(
+      {
+        x:
+          outerRelativeSemiMajor *
+          (Math.cos(outerEccentricAnomaly) - OUTER_ORBIT_ECCENTRICITY),
+        y:
+          outerRelativeSemiMajor *
+          Math.sqrt(1 - OUTER_ORBIT_ECCENTRICITY ** 2) *
+          Math.sin(outerEccentricAnomaly),
+      },
+      OUTER_ORBIT_ARGUMENT
+    );
     const pairCenter = {
-      x: -outerDirection.x * outerSeparation * (stars[2].mass / totalMass),
-      y: -outerDirection.y * outerSeparation * (stars[2].mass / totalMass),
+      x: -outerRelativePosition.x * (stars[2].mass / totalMass),
+      y: -outerRelativePosition.y * (stars[2].mass / totalMass),
     };
     const starC = {
-      x: outerDirection.x * outerSeparation * (massAB / totalMass),
-      y: outerDirection.y * outerSeparation * (massAB / totalMass),
+      x: outerRelativePosition.x * (massAB / totalMass),
+      y: outerRelativePosition.y * (massAB / totalMass),
     };
 
     const innerMeanAnomaly = time * 0.34 + epoch.innerPhase;
@@ -260,6 +279,14 @@ class SimulationEngine {
       x: point.x - barycenter.x,
       y: point.y - barycenter.y,
     }));
+  }
+
+  getPairCenter(positions) {
+    const massAB = stars[0].mass + stars[1].mass;
+    return {
+      x: (positions[0].x * stars[0].mass + positions[1].x * stars[1].mass) / massAB,
+      y: (positions[0].y * stars[0].mass + positions[1].y * stars[1].mass) / massAB,
+    };
   }
 
   updateStatus(text, holdMs = 0) {
@@ -422,37 +449,61 @@ class SimulationEngine {
   }
 
   initializePlanet(epoch) {
+    const massAB = stars[0].mass + stars[1].mass;
     const positions = this.getStarPositions(0, epoch);
     const futurePositions = this.getStarPositions(0.03, epoch);
     const host = positions[2];
     const hostFuture = futurePositions[2];
+    const pairCenter = this.getPairCenter(positions);
+    const pairCenterFuture = this.getPairCenter(futurePositions);
     const hostVelocity = {
       x: (hostFuture.x - host.x) / 0.03,
       y: (hostFuture.y - host.y) / 0.03,
     };
-
-    const angle = PLANET_START_ANGLE;
-    const offset = {
-      x: Math.cos(angle) * PLANET_START_RADIUS,
-      y: Math.sin(angle) * PLANET_START_RADIUS * PLANET_START_ELLIPSE,
+    const pairCenterVelocity = {
+      x: (pairCenterFuture.x - pairCenter.x) / 0.03,
+      y: (pairCenterFuture.y - pairCenter.y) / 0.03,
     };
-    const distance = Math.max(Math.hypot(offset.x, offset.y), 1);
+    const hostRelativePosition = {
+      x: host.x - pairCenter.x,
+      y: host.y - pairCenter.y,
+    };
+    const hostRelativeVelocity = {
+      x: hostVelocity.x - pairCenterVelocity.x,
+      y: hostVelocity.y - pairCenterVelocity.y,
+    };
+    const stableHillRadius =
+      OUTER_ORBIT_PERIASTRON * Math.cbrt(stars[2].mass / (3 * massAB));
+    const startRadius = stableHillRadius * PLANET_START_HILL_RADIUS_FRACTION;
+    const distance = Math.max(Math.hypot(hostRelativePosition.x, hostRelativePosition.y), 1);
     const radial = {
-      x: offset.x / distance,
-      y: offset.y / distance,
+      x: hostRelativePosition.x / distance,
+      y: hostRelativePosition.y / distance,
     };
+    const orbitDirection =
+      hostRelativePosition.x * hostRelativeVelocity.y -
+        hostRelativePosition.y * hostRelativeVelocity.x >=
+      0
+        ? 1
+        : -1;
     const tangent = {
-      x: -radial.y,
-      y: radial.x,
+      x: -radial.y * orbitDirection,
+      y: radial.x * orbitDirection,
     };
-    const orbitalSpeed =
-      Math.sqrt((PLANET_GRAVITY * stars[2].mass) / distance) * randomRange(0.98, 1.04);
+    const orbitalSpeed = Math.sqrt(
+      (PLANET_GRAVITY * stars[2].mass * (1 - PLANET_START_ORBIT_ECCENTRICITY)) /
+        startRadius
+    );
+    const offset = {
+      x: radial.x * startRadius,
+      y: radial.y * startRadius,
+    };
 
     this.state.planet = {
       x: host.x + offset.x,
       y: host.y + offset.y,
-      vx: hostVelocity.x + tangent.x * orbitalSpeed + radial.x * PLANET_START_IMPULSE,
-      vy: hostVelocity.y + tangent.y * orbitalSpeed + radial.y * PLANET_START_IMPULSE,
+      vx: hostVelocity.x + tangent.x * orbitalSpeed,
+      vy: hostVelocity.y + tangent.y * orbitalSpeed,
     };
     this.state.lastPlanetInteractionTimeSeconds = this.state.simulationTimeSeconds;
   }
