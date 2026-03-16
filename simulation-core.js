@@ -13,6 +13,7 @@ const CIVILIZATION_REBIRTH_TEMPERATURE = 0.2;
 const FREEZE_DEATH_PULSE_MS = 360;
 const FREEZE_DEATH_PULSE_COUNT = 3;
 const YEARS_PER_SIMULATION_SECOND = 3.5;
+const TARGET_START_FLUX = 0.82;
 const ALPHA_CENTAURI_AB_ECCENTRICITY = 0.52;
 const ALPHA_CENTAURI_AB_PERIASTRON_MARGIN = 1.45;
 const OUTER_ORBIT_ECCENTRICITY = 0.36;
@@ -172,6 +173,7 @@ class SimulationEngine {
       bannerText: null,
       bannerVariant: null,
       bannerUntilMs: 0,
+      homeStarIndex: 2,
       epochCivilizations: [],
       lastPlanetInteractionTimeSeconds: 0,
       currentPositions: [],
@@ -361,6 +363,7 @@ class SimulationEngine {
       epoch: Math.max(1, this.state.epochs),
       years,
       endReason,
+      homeStar: stars[this.state.homeStarIndex].name,
       civilizationCount: this.state.epochCivilizations.length,
       civilizations: this.state.epochCivilizations.map((entry) => ({ ...entry })),
     });
@@ -450,34 +453,80 @@ class SimulationEngine {
     return flux;
   }
 
+  getBackgroundFluxAtPoint(positions, point, excludedStarIndex) {
+    return positions.reduce((sum, starPoint, index) => {
+      if (index === excludedStarIndex) {
+        return sum;
+      }
+
+      const dx = point.x - starPoint.x;
+      const dy = point.y - starPoint.y;
+      const distanceSquared = Math.max(dx * dx + dy * dy, 1);
+      return sum + STAR_LUMINOSITIES[index] / distanceSquared;
+    }, 0);
+  }
+
+  chooseHomeStarIndex() {
+    return Math.floor(Math.random() * stars.length);
+  }
+
   initializePlanet(epoch) {
     const massAB = stars[0].mass + stars[1].mass;
     const positions = this.getStarPositions(0, epoch);
     const futurePositions = this.getStarPositions(0.03, epoch);
-    const host = positions[2];
-    const hostFuture = futurePositions[2];
+    const hostIndex = this.chooseHomeStarIndex();
+    this.state.homeStarIndex = hostIndex;
+    const host = positions[hostIndex];
+    const hostFuture = futurePositions[hostIndex];
     const pairCenter = this.getPairCenter(positions);
     const pairCenterFuture = this.getPairCenter(futurePositions);
     const hostVelocity = {
       x: (hostFuture.x - host.x) / 0.03,
       y: (hostFuture.y - host.y) / 0.03,
     };
-    const pairCenterVelocity = {
-      x: (pairCenterFuture.x - pairCenter.x) / 0.03,
-      y: (pairCenterFuture.y - pairCenter.y) / 0.03,
-    };
+    let referencePosition;
+    let referenceVelocity;
+    let referenceMass;
+
+    if (hostIndex === 2) {
+      referencePosition = pairCenter;
+      referenceVelocity = {
+        x: (pairCenterFuture.x - pairCenter.x) / 0.03,
+        y: (pairCenterFuture.y - pairCenter.y) / 0.03,
+      };
+      referenceMass = massAB;
+    } else {
+      const companionIndex = hostIndex === 0 ? 1 : 0;
+      referencePosition = positions[companionIndex];
+      referenceVelocity = {
+        x: (futurePositions[companionIndex].x - positions[companionIndex].x) / 0.03,
+        y: (futurePositions[companionIndex].y - positions[companionIndex].y) / 0.03,
+      };
+      referenceMass = stars[companionIndex].mass;
+    }
+
     const hostRelativePosition = {
-      x: host.x - pairCenter.x,
-      y: host.y - pairCenter.y,
+      x: host.x - referencePosition.x,
+      y: host.y - referencePosition.y,
     };
     const hostRelativeVelocity = {
-      x: hostVelocity.x - pairCenterVelocity.x,
-      y: hostVelocity.y - pairCenterVelocity.y,
+      x: hostVelocity.x - referenceVelocity.x,
+      y: hostVelocity.y - referenceVelocity.y,
     };
-    const stableHillRadius =
-      OUTER_ORBIT_PERIASTRON * Math.cbrt(stars[2].mass / (3 * massAB));
-    const startRadius = stableHillRadius * PLANET_START_HILL_RADIUS_FRACTION;
     const distance = Math.max(Math.hypot(hostRelativePosition.x, hostRelativePosition.y), 1);
+    const stableHillRadius =
+      distance * Math.cbrt(stars[hostIndex].mass / (3 * referenceMass));
+    const backgroundFluxAtHost = this.getBackgroundFluxAtPoint(
+      positions,
+      host,
+      hostIndex
+    );
+    const targetHostFlux = Math.max(0.18, TARGET_START_FLUX - backgroundFluxAtHost);
+    const habitableRadius = Math.sqrt(STAR_LUMINOSITIES[hostIndex] / targetHostFlux);
+    const startRadius = Math.max(
+      stableHillRadius * PLANET_START_HILL_RADIUS_FRACTION,
+      habitableRadius
+    );
     const radial = {
       x: hostRelativePosition.x / distance,
       y: hostRelativePosition.y / distance,
@@ -994,6 +1043,7 @@ class SimulationEngine {
       civilizationDeathVisible:
         !this.state.civilizationAlive && this.state.civilizations > 0,
       topCivilizations: this.state.topCivilizations.map((entry) => ({ ...entry })),
+      homeStarName: stars[this.state.homeStarIndex].name,
       climate: getClimateSummary(this.state.lastFlux, this.state.climateBalance),
       statusText: this.state.statusText,
       banner: this.state.bannerText

@@ -448,6 +448,14 @@ h1 {
   font-size: 1rem;
 }
 
+.epoch-record-host {
+  margin: 10px 0 0;
+  color: var(--accent-a);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .epoch-civilizations {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

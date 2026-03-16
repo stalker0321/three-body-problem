@@ -10,6 +10,7 @@ const climateState = document.getElementById("climateState");
 const climateDetail = document.getElementById("climateDetail");
 const civilizationBanner = document.getElementById("civilizationBanner");
 const systemStatus = document.getElementById("systemStatus");
+const homeStarLabel = document.getElementById("homeStarLabel");
 const speedButtons = Array.from(document.querySelectorAll("[data-speed]"));
 
 const STAR_TRAIL_LENGTH = 150;
@@ -129,6 +130,7 @@ function updateUi(snapshot) {
   climateState.textContent = snapshot.climate.label;
   climateDetail.textContent = snapshot.climate.detail;
   systemStatus.textContent = snapshot.statusText;
+  homeStarLabel.textContent = `Домашняя звезда: ${snapshot.homeStarName}`;
   renderCivilizationRanking(snapshot.topCivilizations);
   updateBanner(snapshot.banner);
   updateSpeedUi(snapshot.timeScale);
