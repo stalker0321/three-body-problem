@@ -16,15 +16,14 @@
           </div>
           <h1>Three Body Problem</h1>
           <p class="lead">
-            Одна общая серверная симуляция системы Alpha Centauri: три звезды
-            хаотично меняют орбиты, а цивилизация на планете у Proxima пытается
-            выжить между падениями, перегревом и замерзанием.
+            Одна общая серверная симуляция системы Alpha Centauri: две планеты
+            у Proxima Centauri блуждают в поле трёх звёзд, а эпоха завершается,
+            только когда потеряны обе.
           </p>
         </div>
 
         <div class="scene-frame">
           <canvas id="universe" width="960" height="720" aria-label="Симуляция трёх звёзд"></canvas>
-          <div id="civilizationBanner" class="civilization-banner" hidden></div>
           <section class="scene-panel scene-panel-left">
             <p class="eyebrow">Эпоха системы</p>
             <div class="scene-metrics">
@@ -47,34 +46,27 @@
               </div>
             </div>
             <p id="systemStatus" class="scene-panel-note">Система стабильна</p>
-            <p id="homeStarLabel" class="scene-panel-note">Домашняя звезда: Proxima Centauri</p>
             <p id="regimeLabel" class="scene-panel-note">Режим эпохи: Резонансный дуэт</p>
           </section>
           <aside class="scene-overlay">
             <section class="overlay-card overlay-card-primary">
-              <p class="eyebrow">Цивилизация</p>
-              <div class="overlay-metrics">
-                <article class="overlay-metric">
-                  <span class="stat-label">Номер</span>
-                  <strong id="civilizationCount">0</strong>
+              <p class="eyebrow">Планеты системы</p>
+              <div class="planet-readouts">
+                <article class="planet-readout">
+                  <p class="planet-readout-title">Proxima Centauri b</p>
+                  <strong id="planetBClimateState">Умеренно</strong>
+                  <p id="planetBClimateDetail">Температура · +15.0 °C</p>
+                  <p id="planetBDistance">Удаление от барицентра · 0.0 а.е.</p>
+                  <p id="planetBStress">Приливный стресс · 0%</p>
                 </article>
-                <article class="overlay-metric">
-                  <span class="stat-label">Возраст</span>
-                  <strong id="civilizationAge">0</strong>
+                <article class="planet-readout">
+                  <p class="planet-readout-title">Proxima Centauri c</p>
+                  <strong id="planetCClimateState">Умеренно</strong>
+                  <p id="planetCClimateDetail">Температура · +15.0 °C</p>
+                  <p id="planetCDistance">Удаление от барицентра · 0.0 а.е.</p>
+                  <p id="planetCStress">Приливный стресс · 0%</p>
                 </article>
               </div>
-              <p id="civilizationDeathNotice" class="civilization-death-notice" hidden>Цивилизация мертва</p>
-              <div class="overlay-divider"></div>
-              <p class="eyebrow">Климат</p>
-              <strong id="climateState">Умеренно</strong>
-              <p id="climateDetail">Температура в пределах жизни · +15.0 °C</p>
-              <p id="tidalStressLabel">Приливный стресс: 0%</p>
-            </section>
-            <section class="overlay-card">
-              <p class="eyebrow">Топ Цивилизаций</p>
-              <ol id="civilizationRanking" class="epoch-ranking">
-                <li class="epoch-ranking-empty">Пока нет завершённых цивилизаций</li>
-              </ol>
             </section>
           </aside>
         </div>

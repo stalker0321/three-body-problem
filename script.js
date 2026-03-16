@@ -1,17 +1,16 @@
 const canvas = document.getElementById("universe");
 const ctx = canvas.getContext("2d");
 const epochCount = document.getElementById("epochCount");
-const civilizationCount = document.getElementById("civilizationCount");
 const yearCount = document.getElementById("yearCount");
-const civilizationAge = document.getElementById("civilizationAge");
-const civilizationRanking = document.getElementById("civilizationRanking");
-const civilizationDeathNotice = document.getElementById("civilizationDeathNotice");
-const climateState = document.getElementById("climateState");
-const climateDetail = document.getElementById("climateDetail");
-const tidalStressLabel = document.getElementById("tidalStressLabel");
-const civilizationBanner = document.getElementById("civilizationBanner");
+const planetBClimateState = document.getElementById("planetBClimateState");
+const planetBClimateDetail = document.getElementById("planetBClimateDetail");
+const planetBDistance = document.getElementById("planetBDistance");
+const planetBStress = document.getElementById("planetBStress");
+const planetCClimateState = document.getElementById("planetCClimateState");
+const planetCClimateDetail = document.getElementById("planetCClimateDetail");
+const planetCDistance = document.getElementById("planetCDistance");
+const planetCStress = document.getElementById("planetCStress");
 const systemStatus = document.getElementById("systemStatus");
-const homeStarLabel = document.getElementById("homeStarLabel");
 const regimeLabel = document.getElementById("regimeLabel");
 const speedButtons = Array.from(document.querySelectorAll("[data-speed]"));
 
@@ -102,52 +101,45 @@ function updateSpeedUi(timeScale) {
   });
 }
 
-function renderCivilizationRanking(entries) {
-  if (!entries.length) {
-    civilizationRanking.innerHTML =
-      '<li class="epoch-ranking-empty">Пока нет завершённых цивилизаций</li>';
-    return;
+function formatSignedTemperature(temperatureCelsius) {
+  if (temperatureCelsius === null || temperatureCelsius === undefined) {
+    return "нет данных";
   }
 
-  civilizationRanking.innerHTML = entries
-    .map(
-      (entry) =>
-        `<li><strong>${formatYears(entry.years)} лет</strong><p>${entry.reason}</p><span>эпоха ${entry.epoch}, цивилизация ${entry.civilization}</span></li>`
-    )
-    .join("");
-}
-
-function updateBanner(banner) {
-  if (!banner) {
-    civilizationBanner.hidden = true;
-    civilizationBanner.className = "civilization-banner";
-    civilizationBanner.textContent = "";
-    return;
-  }
-
-  civilizationBanner.textContent = banner.text;
-  civilizationBanner.hidden = false;
-  civilizationBanner.className = `civilization-banner ${
-    banner.variant ? `is-${banner.variant}` : ""
-  }`.trim();
+  return `${temperatureCelsius >= 0 ? "+" : ""}${temperatureCelsius.toFixed(1)} °C`;
 }
 
 function updateUi(snapshot) {
   epochCount.textContent = String(snapshot.epochs);
-  civilizationCount.textContent = String(snapshot.civilizations);
   yearCount.textContent = formatYears(snapshot.yearCountYears);
-  civilizationAge.textContent = formatYears(snapshot.civilizationAgeYears);
-  civilizationDeathNotice.hidden = !snapshot.civilizationDeathVisible;
-  climateState.textContent = snapshot.climate.label;
-  climateDetail.textContent = snapshot.climate.detail;
-  tidalStressLabel.textContent = snapshot.tidalStressSourceName
-    ? `Приливный стресс: ${Math.round(snapshot.tidalStressRatio * 100)}% · ${snapshot.tidalStressSourceName}`
-    : `Приливный стресс: ${Math.round(snapshot.tidalStressRatio * 100)}%`;
   systemStatus.textContent = snapshot.statusText;
-  homeStarLabel.textContent = `Домашняя звезда: ${snapshot.homeStarName}`;
   regimeLabel.textContent = `Режим эпохи: ${snapshot.regimeName}`;
-  renderCivilizationRanking(snapshot.topCivilizations);
-  updateBanner(snapshot.banner);
+
+  const planetB = snapshot.planetInfo;
+  const planetC = snapshot.companionInfo;
+
+  planetBClimateState.textContent = planetB.alive ? planetB.climate.label : "Утрачена";
+  planetBClimateDetail.textContent = planetB.alive
+    ? planetB.climate.detail
+    : "Планета разрушена или выброшена из системы";
+  planetBDistance.textContent = planetB.alive
+    ? `Удаление от барицентра · ${planetB.distanceFromBarycenterAu.toFixed(1)} а.е.`
+    : "Удаление от барицентра · нет данных";
+  planetBStress.textContent = snapshot.tidalStressSourceName
+    ? `Приливный стресс · ${Math.round(snapshot.tidalStressRatio * 100)}% · ${snapshot.tidalStressSourceName}`
+    : `Приливный стресс · ${Math.round(snapshot.tidalStressRatio * 100)}%`;
+
+  planetCClimateState.textContent = planetC.alive ? planetC.climate.label : "Утрачена";
+  planetCClimateDetail.textContent = planetC.alive
+    ? planetC.climate.detail
+    : "Планета разрушена или выброшена из системы";
+  planetCDistance.textContent = planetC.alive
+    ? `Удаление от барицентра · ${planetC.distanceFromBarycenterAu.toFixed(1)} а.е.`
+    : "Удаление от барицентра · нет данных";
+  planetCStress.textContent = snapshot.companionTidalStressSourceName
+    ? `Приливный стресс · ${Math.round(snapshot.companionTidalStressRatio * 100)}% · ${snapshot.companionTidalStressSourceName}`
+    : `Приливный стресс · ${Math.round(snapshot.companionTidalStressRatio * 100)}%`;
+
   updateSpeedUi(snapshot.timeScale);
 }
 
@@ -218,25 +210,20 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
     toSnapshot.yearCountYears,
     alpha
   );
-  snapshot.civilizationAgeYears = lerp(
-    fromSnapshot.civilizationAgeYears,
-    toSnapshot.civilizationAgeYears,
-    alpha
-  );
-  snapshot.climate = {
-    ...toSnapshot.climate,
-    flux: lerp(fromSnapshot.climate.flux, toSnapshot.climate.flux, alpha),
-    temperatureCelsius: lerp(
-      fromSnapshot.climate.temperatureCelsius,
-      toSnapshot.climate.temperatureCelsius,
-      alpha
-    ),
-    balance: lerp(fromSnapshot.climate.balance, toSnapshot.climate.balance, alpha),
-  };
   snapshot.tidalStress = lerp(fromSnapshot.tidalStress, toSnapshot.tidalStress, alpha);
   snapshot.tidalStressRatio = lerp(
     fromSnapshot.tidalStressRatio,
     toSnapshot.tidalStressRatio,
+    alpha
+  );
+  snapshot.companionTidalStress = lerp(
+    fromSnapshot.companionTidalStress,
+    toSnapshot.companionTidalStress,
+    alpha
+  );
+  snapshot.companionTidalStressRatio = lerp(
+    fromSnapshot.companionTidalStressRatio,
+    toSnapshot.companionTidalStressRatio,
     alpha
   );
 
@@ -262,26 +249,62 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
     snapshot.companion = toSnapshot.companion || fromSnapshot.companion;
   }
 
-  if (fromSnapshot.deathPulse && toSnapshot.deathPulse) {
-    snapshot.deathPulse = {
-      mode: toSnapshot.deathPulse.mode,
-      progress: lerp(
-        fromSnapshot.deathPulse.progress,
-        toSnapshot.deathPulse.progress,
+  if (
+    fromSnapshot.planetInfo?.climate &&
+    toSnapshot.planetInfo?.climate &&
+    fromSnapshot.planetInfo.alive &&
+    toSnapshot.planetInfo.alive
+  ) {
+    snapshot.planetInfo = {
+      ...toSnapshot.planetInfo,
+      distanceFromBarycenterAu: lerp(
+        fromSnapshot.planetInfo.distanceFromBarycenterAu,
+        toSnapshot.planetInfo.distanceFromBarycenterAu,
         alpha
       ),
+      climate: {
+        ...toSnapshot.planetInfo.climate,
+        flux: lerp(
+          fromSnapshot.planetInfo.climate.flux,
+          toSnapshot.planetInfo.climate.flux,
+          alpha
+        ),
+        temperatureCelsius: lerp(
+          fromSnapshot.planetInfo.climate.temperatureCelsius,
+          toSnapshot.planetInfo.climate.temperatureCelsius,
+          alpha
+        ),
+      },
     };
   }
 
   if (
-    fromSnapshot.rebirthPulseProgress !== null &&
-    toSnapshot.rebirthPulseProgress !== null
+    fromSnapshot.companionInfo?.climate &&
+    toSnapshot.companionInfo?.climate &&
+    fromSnapshot.companionInfo.alive &&
+    toSnapshot.companionInfo.alive
   ) {
-    snapshot.rebirthPulseProgress = lerp(
-      fromSnapshot.rebirthPulseProgress,
-      toSnapshot.rebirthPulseProgress,
-      alpha
-    );
+    snapshot.companionInfo = {
+      ...toSnapshot.companionInfo,
+      distanceFromBarycenterAu: lerp(
+        fromSnapshot.companionInfo.distanceFromBarycenterAu,
+        toSnapshot.companionInfo.distanceFromBarycenterAu,
+        alpha
+      ),
+      climate: {
+        ...toSnapshot.companionInfo.climate,
+        flux: lerp(
+          fromSnapshot.companionInfo.climate.flux,
+          toSnapshot.companionInfo.climate.flux,
+          alpha
+        ),
+        temperatureCelsius: lerp(
+          fromSnapshot.companionInfo.climate.temperatureCelsius,
+          toSnapshot.companionInfo.climate.temperatureCelsius,
+          alpha
+        ),
+      },
+    };
   }
 
   snapshot.event = interpolateEvent(
@@ -290,6 +313,7 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
     alpha,
     renderServerTimeMs
   );
+  snapshot.effects = toSnapshot.effects;
 
   return snapshot;
 }
@@ -427,7 +451,7 @@ function appendTrailSample(trail, point, nowMs, maxLength) {
 }
 
 function updateRenderTrails(snapshot, renderServerTimeMs) {
-  if (!snapshot.planet || snapshot.event) {
+  if (snapshot.event) {
     return;
   }
 
@@ -446,12 +470,14 @@ function updateRenderTrails(snapshot, renderServerTimeMs) {
       STAR_TRAIL_LENGTH
     );
   });
-  appendTrailSample(
-    viewerState.planetTrail,
-    snapshot.planet,
-    renderServerTimeMs,
-    PLANET_TRAIL_LENGTH
-  );
+  if (snapshot.planet) {
+    appendTrailSample(
+      viewerState.planetTrail,
+      snapshot.planet,
+      renderServerTimeMs,
+      PLANET_TRAIL_LENGTH
+    );
+  }
   if (snapshot.companion) {
     appendTrailSample(
       viewerState.companionTrail,
@@ -658,46 +684,6 @@ function drawPlanetImpactFlash(x, y, star, angle, progress) {
   ctx.restore();
 }
 
-function drawClimatePulse(x, y, mode, progress) {
-  const pulse = 0.35 + Math.sin(progress * Math.PI) * 0.65;
-  const color =
-    mode === "climateBurn"
-      ? "255, 96, 72"
-      : mode === "climateFreeze"
-        ? "145, 209, 255"
-        : "102, 236, 143";
-  const radius = planetStyle.size * (mode === "rebirth" ? 5 + pulse * 7 : 6 + pulse * 8);
-
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
-  glow.addColorStop(
-    0,
-    `rgba(${color}, ${mode === "rebirth" ? 0.42 * pulse : 0.38 * pulse})`
-  );
-  glow.addColorStop(
-    0.5,
-    `rgba(${color}, ${mode === "rebirth" ? 0.2 * pulse : 0.16 * pulse})`
-  );
-  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = `rgba(${color}, ${0.8 * pulse})`;
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.arc(x, y, planetStyle.size * (1.8 + pulse * 1.7), 0, Math.PI * 2);
-  ctx.stroke();
-
-  if (mode === "rebirth") {
-    ctx.strokeStyle = `rgba(${color}, ${0.45 * pulse})`;
-    ctx.lineWidth = 0.9;
-    ctx.beginPath();
-    ctx.arc(x, y, planetStyle.size * (3 + pulse * 3.4), 0, Math.PI * 2);
-    ctx.stroke();
-  }
-}
-
 function drawFragments(cx, cy, fragments, elapsedMs, progress) {
   const age = elapsedMs * 0.001;
 
@@ -783,6 +769,35 @@ function drawEventFrame(cx, cy, snapshot, renderServerTimeMs) {
   }
 }
 
+function drawBodyEffects(cx, cy, effects) {
+  effects.forEach((effect) => {
+    if (effect.type === "planetImpact") {
+      drawPlanetImpactFlash(
+        cx + effect.positions[effect.starIndex].x,
+        cy + effect.positions[effect.starIndex].y,
+        stars[effect.starIndex],
+        effect.impactAngle,
+        effect.progress
+      );
+      return;
+    }
+
+    if (effect.type === "planetDisruption") {
+      drawFragments(cx, cy, effect.fragments, effect.elapsedMs, effect.progress);
+      return;
+    }
+
+    if (effect.type === "planetEscape" && effect.planetPosition) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0.18, 1 - effect.progress);
+      const drawBody =
+        effect.bodyName === "Proxima Centauri c" ? drawCompanion : drawPlanet;
+      drawBody(cx + effect.planetPosition.x, cy + effect.planetPosition.y);
+      ctx.restore();
+    }
+  });
+}
+
 function render() {
   const frame = getRenderFrame();
   if (!frame) {
@@ -804,6 +819,7 @@ function render() {
 
   if (snapshot.event) {
     drawEventFrame(0, 0, snapshot, renderServerTimeMs);
+    drawBodyEffects(0, 0, snapshot.effects || []);
     ctx.restore();
     return;
   }
@@ -823,25 +839,11 @@ function render() {
 
   if (snapshot.planet) {
     drawPlanet(snapshot.planet.x, snapshot.planet.y);
-    if (snapshot.deathPulse) {
-      drawClimatePulse(
-        snapshot.planet.x,
-        snapshot.planet.y,
-        snapshot.deathPulse.mode,
-        snapshot.deathPulse.progress
-      );
-    } else if (snapshot.rebirthPulseProgress !== null) {
-      drawClimatePulse(
-        snapshot.planet.x,
-        snapshot.planet.y,
-        "rebirth",
-        snapshot.rebirthPulseProgress
-      );
-    }
   }
   if (snapshot.companion) {
     drawCompanion(snapshot.companion.x, snapshot.companion.y);
   }
+  drawBodyEffects(0, 0, snapshot.effects || []);
   ctx.restore();
 }
 
@@ -861,6 +863,9 @@ function applySnapshot(snapshot) {
 
   if (viewerState.latestSnapshot?.companion && !snapshot.companion) {
     viewerState.companionTrail.length = 0;
+  }
+  if (viewerState.latestSnapshot?.planet && !snapshot.planet) {
+    viewerState.planetTrail.length = 0;
   }
 
   viewerState.latestSnapshot = snapshot;

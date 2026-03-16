@@ -41,6 +41,7 @@ const TIDAL_STRESS_LIMIT = 100;
 const TIDAL_STRESS_DECAY_RATE = 18;
 const TIDAL_ZONE_MULTIPLIER = 1.3;
 const TIDAL_STRESS_RATE = 55;
+const SCENE_UNITS_PER_AU = 7.6;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
 
@@ -173,20 +174,16 @@ function getClimateSummary(flux, climateBalance) {
     (EARTHLIKE_BASELINE_TEMPERATURE_C + 273.15) * Math.pow(Math.max(flux, 0), 0.25) -
     273.15;
   let label = "Умеренно";
-  let detail = "Температура в пределах жизни";
+  let detail = "Температура";
 
   if (climateBalance >= 65 || flux > SAFE_FLUX_MAX * 1.18) {
-    label = "Жарко";
-    detail = "Цивилизация перегревается";
+    label = "Перегрев";
   } else if (climateBalance <= -65 || flux < SAFE_FLUX_MIN * 0.8) {
-    label = "Холодно";
-    detail = "Цивилизация промерзает";
+    label = "Переохлаждение";
   } else if (flux > SAFE_FLUX_MAX) {
-    label = "Теплеет";
-    detail = "Поток выше нормы";
+    label = "Тепло";
   } else if (flux < SAFE_FLUX_MIN) {
-    label = "Остывает";
-    detail = "Поток ниже нормы";
+    label = "Холодно";
   }
 
   return {
@@ -216,12 +213,18 @@ class SimulationEngine {
       planet: null,
       companion: null,
       event: null,
+      effects: [],
+      pendingEpochRestartAtMs: 0,
+      planetOutcomeReason: null,
+      companionOutcomeReason: null,
       previousEpochYears: 0,
       topCivilizations: [],
       climateBalance: 0,
       lastFlux: 1,
       tidalStress: 0,
       tidalStressSourceIndex: null,
+      companionTidalStress: 0,
+      companionTidalStressSourceIndex: null,
       civilizationAlive: false,
       civilizationLogged: false,
       previousCivilizationYears: 0,
@@ -236,6 +239,7 @@ class SimulationEngine {
       homeStarIndex: 2,
       epochCivilizations: [],
       lastPlanetInteractionTimeSeconds: 0,
+      lastCompanionInteractionTimeSeconds: 0,
       currentPositions: [],
     };
 
@@ -528,7 +532,7 @@ class SimulationEngine {
   }
 
   chooseHomeStarIndex() {
-    return Math.floor(Math.random() * stars.length);
+    return 2;
   }
 
   createOrbitingBody(hostIndex, orbitContext, radius, phaseOffset, eccentricity) {
@@ -674,6 +678,7 @@ class SimulationEngine {
       regime.companionEccentricity
     );
     this.state.lastPlanetInteractionTimeSeconds = this.state.simulationTimeSeconds;
+    this.state.lastCompanionInteractionTimeSeconds = this.state.simulationTimeSeconds;
   }
 
   startEpoch(timeMs, options = {}) {
@@ -685,6 +690,10 @@ class SimulationEngine {
     } = options;
 
     this.state.event = null;
+    this.state.effects = [];
+    this.state.pendingEpochRestartAtMs = 0;
+    this.state.planetOutcomeReason = null;
+    this.state.companionOutcomeReason = null;
     if (incrementEpochs) {
       this.state.epochs += 1;
     }
@@ -695,6 +704,8 @@ class SimulationEngine {
     this.state.climateBalance = 0;
     this.state.tidalStress = 0;
     this.state.tidalStressSourceIndex = null;
+    this.state.companionTidalStress = 0;
+    this.state.companionTidalStressSourceIndex = null;
     this.initializeBodies(this.state.epoch);
     this.state.currentPositions = this.getStarPositions(0, this.state.epoch);
     this.state.lastFlux = this.computeStellarFlux(this.state.currentPositions);
@@ -764,6 +775,38 @@ class SimulationEngine {
         this.integratePlanetStep(this.state.companion, positions, stepSeconds);
       }
     }
+  }
+
+  computeFluxAtBody(body, positions) {
+    if (!body) {
+      return 0;
+    }
+
+    return positions.reduce((sum, point, index) => {
+      const dx = body.x - point.x;
+      const dy = body.y - point.y;
+      const distanceSquared = Math.max(dx * dx + dy * dy, 1);
+      return sum + STAR_LUMINOSITIES[index] / distanceSquared;
+    }, 0);
+  }
+
+  getBodyReadout(name, body, positions) {
+    if (!body) {
+      return {
+        name,
+        alive: false,
+        climate: null,
+        distanceFromBarycenterAu: null,
+      };
+    }
+
+    const flux = this.computeFluxAtBody(body, positions);
+    return {
+      name,
+      alive: true,
+      climate: getClimateSummary(flux, 0),
+      distanceFromBarycenterAu: Math.hypot(body.x, body.y) / SCENE_UNITS_PER_AU,
+    };
   }
 
   getStarVelocities(time, epoch = this.state.epoch) {
@@ -843,27 +886,110 @@ class SimulationEngine {
     this.updateStatus(eventReason, this.state.event.restartAtMs);
   }
 
-  startPlanetEscapeEvent(timeMs, positions) {
-    const eventReason = "Планета выброшена из системы";
-    if (this.state.civilizationAlive) {
-      this.recordCivilizationResult(eventReason);
-      this.state.civilizationAlive = false;
-      this.state.civilizationStartTimeSeconds = 0;
-      this.queueCivilizationRebirth(timeMs);
-    }
-    this.finalizeEpoch(eventReason);
-    this.state.event = {
-      type: "planetEscape",
+  createBodyEffect(body, starIndex, positions, mode, timeMs, bodyName) {
+    const starPosition = positions[starIndex];
+    const bodyPosition = { x: body.x, y: body.y };
+    return {
+      type: mode === "impact" ? "planetImpact" : "planetDisruption",
+      bodyName,
+      starIndex,
       startMs: timeMs,
       restartAtMs: timeMs + PLANET_IMPACT_RESTART_MS,
       positions: clonePositions(positions),
-      planetPosition: { x: this.state.planet.x, y: this.state.planet.y },
-      startSimulationTimeSeconds: this.state.simulationTimeSeconds,
-      incrementEpochs: true,
+      impactAngle: Math.atan2(
+        bodyPosition.y - starPosition.y,
+        bodyPosition.x - starPosition.x
+      ),
+      planetPosition: bodyPosition,
+      fragments:
+        mode === "disruption"
+          ? this.createFragments(
+              bodyPosition,
+              { x: body.vx, y: body.vy },
+              stars[starIndex].rgb,
+              2,
+              12,
+              0.92
+            )
+          : [],
     };
-    this.state.planet = null;
+  }
+
+  createEscapeEffect(body, positions, timeMs, bodyName) {
+    return {
+      type: "planetEscape",
+      bodyName,
+      startMs: timeMs,
+      restartAtMs: timeMs + PLANET_IMPACT_RESTART_MS,
+      positions: clonePositions(positions),
+      planetPosition: { x: body.x, y: body.y },
+      fragments: [],
+    };
+  }
+
+  removeBody(bodyKey) {
+    if (bodyKey === "planet") {
+      this.state.planet = null;
+      this.state.tidalStress = 0;
+      this.state.tidalStressSourceIndex = null;
+      return;
+    }
+
     this.state.companion = null;
-    this.updateStatus(eventReason, this.state.event.restartAtMs);
+    this.state.companionTidalStress = 0;
+    this.state.companionTidalStressSourceIndex = null;
+  }
+
+  getBodyDisplayName(bodyKey) {
+    return bodyKey === "planet" ? "Proxima Centauri b" : "Proxima Centauri c";
+  }
+
+  maybeScheduleEpochRestart(timeMs) {
+    if (this.state.planet || this.state.companion || this.state.pendingEpochRestartAtMs) {
+      return;
+    }
+
+    const outcome = [
+      `b: ${this.state.planetOutcomeReason || "утрачена"}`,
+      `c: ${this.state.companionOutcomeReason || "утрачена"}`,
+    ].join(" · ");
+    const endReason = `Обе планеты потеряны · ${outcome}`;
+    this.finalizeEpoch(endReason);
+    this.state.pendingEpochRestartAtMs = timeMs + PLANET_IMPACT_RESTART_MS;
+    this.updateStatus(endReason, this.state.pendingEpochRestartAtMs);
+  }
+
+  handleBodyLoss(bodyKey, timeMs, positions, reasonText, effect) {
+    if (!this.state[bodyKey]) {
+      return;
+    }
+
+    if (bodyKey === "planet") {
+      this.state.planetOutcomeReason = reasonText;
+    } else {
+      this.state.companionOutcomeReason = reasonText;
+    }
+
+    this.removeBody(bodyKey);
+    this.state.effects.push(effect);
+    this.updateStatus(reasonText, timeMs + 1800);
+    this.maybeScheduleEpochRestart(timeMs);
+  }
+
+  startPlanetEscapeEvent(bodyKey, timeMs, positions) {
+    const body = this.state[bodyKey];
+    if (!body) {
+      return;
+    }
+
+    const reasonText = `${this.getBodyDisplayName(bodyKey)} выброшена из системы`;
+    this.handleBodyLoss(
+      bodyKey,
+      timeMs,
+      positions,
+      reasonText,
+      this.createEscapeEffect(body, positions, timeMs, this.getBodyDisplayName(bodyKey))
+    );
   }
 
   startClimateEvent(timeMs, mode) {
@@ -931,17 +1057,14 @@ class SimulationEngine {
   }
 
   updatePlanetInteractionState(positions) {
-    if (
-      (this.state.planet &&
-        this.getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) ||
-      (this.state.companion &&
-        positions.some((point) => {
-          const dx = this.state.companion.x - point.x;
-          const dy = this.state.companion.y - point.y;
-          return Math.hypot(dx, dy) <= PLANET_INTERACTION_RADIUS;
-        }))
-    ) {
+    if (this.state.planet && this.getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) {
       this.state.lastPlanetInteractionTimeSeconds = this.state.simulationTimeSeconds;
+    }
+    if (
+      this.state.companion &&
+      this.getBodyNearestStarDistance(this.state.companion, positions) <= PLANET_INTERACTION_RADIUS
+    ) {
+      this.state.lastCompanionInteractionTimeSeconds = this.state.simulationTimeSeconds;
     }
   }
 
@@ -957,22 +1080,22 @@ class SimulationEngine {
     }, Infinity);
   }
 
-  hasPlanetEscaped(positions) {
-    if (!this.state.planet) {
+  hasBodyEscaped(body, lastInteractionTimeSeconds, positions) {
+    if (!body) {
       return false;
     }
 
-    const distanceFromCenter = Math.hypot(this.state.planet.x, this.state.planet.y);
+    const distanceFromCenter = Math.hypot(body.x, body.y);
     if (distanceFromCenter <= PLANET_ESCAPE_RADIUS) {
       return false;
     }
 
-    if (this.getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) {
+    if (this.getBodyNearestStarDistance(body, positions) <= PLANET_INTERACTION_RADIUS) {
       return false;
     }
 
     const yearsSinceLastInteraction = this.getYearsElapsed(
-      this.state.simulationTimeSeconds - this.state.lastPlanetInteractionTimeSeconds
+      this.state.simulationTimeSeconds - lastInteractionTimeSeconds
     );
     return yearsSinceLastInteraction >= PLANET_ESCAPE_YEARS;
   }
@@ -1003,10 +1126,15 @@ class SimulationEngine {
     return false;
   }
 
-  updateTidalStress(positions, starVelocities, deltaSeconds) {
-    if (!this.state.planet) {
-      this.state.tidalStress = 0;
-      this.state.tidalStressSourceIndex = null;
+  updateBodyTidalStress(bodyKey, positions, starVelocities, deltaSeconds) {
+    const body = this.state[bodyKey];
+    const stressKey = bodyKey === "planet" ? "tidalStress" : "companionTidalStress";
+    const sourceKey =
+      bodyKey === "planet" ? "tidalStressSourceIndex" : "companionTidalStressSourceIndex";
+
+    if (!body) {
+      this.state[stressKey] = 0;
+      this.state[sourceKey] = null;
       return null;
     }
 
@@ -1014,8 +1142,8 @@ class SimulationEngine {
     let strongestSourceIndex = null;
 
     positions.forEach((point, index) => {
-      const dx = this.state.planet.x - point.x;
-      const dy = this.state.planet.y - point.y;
+      const dx = body.x - point.x;
+      const dy = body.y - point.y;
       const distance = Math.hypot(dx, dy);
       const rocheRadius = stars[index].size * ROCHE_MULTIPLIERS[index];
       const tidalZoneRadius = rocheRadius * TIDAL_ZONE_MULTIPLIER;
@@ -1023,8 +1151,8 @@ class SimulationEngine {
         return;
       }
 
-      const relativeVelocityX = this.state.planet.vx - starVelocities[index].x;
-      const relativeVelocityY = this.state.planet.vy - starVelocities[index].y;
+      const relativeVelocityX = body.vx - starVelocities[index].x;
+      const relativeVelocityY = body.vy - starVelocities[index].y;
       const relativeSpeed = Math.hypot(relativeVelocityX, relativeVelocityY);
       const depth =
         distance <= rocheRadius
@@ -1040,27 +1168,24 @@ class SimulationEngine {
     });
 
     if (strongestExposure > 0) {
-      this.state.tidalStress = Math.min(
+      this.state[stressKey] = Math.min(
         TIDAL_STRESS_LIMIT,
-        this.state.tidalStress + strongestExposure * TIDAL_STRESS_RATE * deltaSeconds
+        this.state[stressKey] + strongestExposure * TIDAL_STRESS_RATE * deltaSeconds
       );
-      this.state.tidalStressSourceIndex = strongestSourceIndex;
+      this.state[sourceKey] = strongestSourceIndex;
     } else {
-      this.state.tidalStress = Math.max(
+      this.state[stressKey] = Math.max(
         0,
-        this.state.tidalStress - TIDAL_STRESS_DECAY_RATE * deltaSeconds
+        this.state[stressKey] - TIDAL_STRESS_DECAY_RATE * deltaSeconds
       );
-      if (this.state.tidalStress === 0) {
-        this.state.tidalStressSourceIndex = null;
+      if (this.state[stressKey] === 0) {
+        this.state[sourceKey] = null;
       }
     }
 
-    if (
-      this.state.tidalStress >= TIDAL_STRESS_LIMIT &&
-      this.state.tidalStressSourceIndex !== null
-    ) {
+    if (this.state[stressKey] >= TIDAL_STRESS_LIMIT && this.state[sourceKey] !== null) {
       return {
-        starIndex: this.state.tidalStressSourceIndex,
+        starIndex: this.state[sourceKey],
         mode: "disruption",
       };
     }
@@ -1068,14 +1193,14 @@ class SimulationEngine {
     return null;
   }
 
-  detectPlanetDeath(positions, currentTime) {
-    if (!this.state.planet) {
+  detectBodyImpact(body, positions) {
+    if (!body) {
       return null;
     }
 
     for (let index = 0; index < positions.length; index += 1) {
-      const dx = this.state.planet.x - positions[index].x;
-      const dy = this.state.planet.y - positions[index].y;
+      const dx = body.x - positions[index].x;
+      const dy = body.y - positions[index].y;
       const distance = Math.hypot(dx, dy);
       const impactRadius = stars[index].size;
       if (distance <= impactRadius) {
@@ -1086,27 +1211,8 @@ class SimulationEngine {
     return null;
   }
 
-  updateCompanionState(positions) {
-    if (!this.state.companion) {
-      return;
-    }
-
-    for (let index = 0; index < positions.length; index += 1) {
-      const dx = this.state.companion.x - positions[index].x;
-      const dy = this.state.companion.y - positions[index].y;
-      const distance = Math.hypot(dx, dy);
-      if (distance <= stars[index].size) {
-        this.state.companion = null;
-        return;
-      }
-    }
-
-    if (
-      Math.hypot(this.state.companion.x, this.state.companion.y) >
-      PLANET_ESCAPE_RADIUS * 1.35
-    ) {
-      this.state.companion = null;
-    }
+  updateEffects(nowMs) {
+    this.state.effects = this.state.effects.filter((effect) => nowMs < effect.restartAtMs);
   }
 
   getCollisionPair(positions) {
@@ -1149,8 +1255,18 @@ class SimulationEngine {
     if (!this.state.event && this.state.statusUntilMs && nowMs >= this.state.statusUntilMs) {
       this.updateStatus("Система стабильна");
     }
+    this.updateEffects(nowMs);
 
     const deltaSeconds = Math.min(Math.max(deltaMs, 0) * 0.001, 0.033);
+
+    if (this.state.pendingEpochRestartAtMs) {
+      if (nowMs >= this.state.pendingEpochRestartAtMs) {
+        this.startEpoch(nowMs, {
+          incrementEpochs: true,
+          statusText: "Система стабильна",
+        });
+      }
+    }
 
     if (this.state.event) {
       if (nowMs >= this.state.event.restartAtMs) {
@@ -1180,44 +1296,105 @@ class SimulationEngine {
     }
 
     this.advancePlanet(positions, simulationDeltaSeconds);
-    this.updateCompanionState(positions);
     this.updatePlanetInteractionState(positions);
-    if (this.hasPlanetEscaped(positions)) {
-      this.startPlanetEscapeEvent(nowMs, positions);
-      this.state.currentPositions = clonePositions(this.state.event.positions);
-      return;
+    if (
+      this.hasBodyEscaped(
+        this.state.planet,
+        this.state.lastPlanetInteractionTimeSeconds,
+        positions
+      )
+    ) {
+      this.startPlanetEscapeEvent("planet", nowMs, positions);
+    }
+    if (
+      this.hasBodyEscaped(
+        this.state.companion,
+        this.state.lastCompanionInteractionTimeSeconds,
+        positions
+      )
+    ) {
+      this.startPlanetEscapeEvent("companion", nowMs, positions);
     }
 
-    this.updateClimate(simulationDeltaSeconds, positions);
-    if (this.canBeginCivilization()) {
-      this.beginCivilization(nowMs, {
-        incrementCount: true,
-        showBannerText:
-          this.state.civilizations > 0 ? "Цивилизация вновь пустила свои корни" : null,
-      });
-    }
-    if (this.state.civilizationAlive && this.state.climateBalance >= CLIMATE_LIMIT) {
-      this.startClimateEvent(nowMs, "burn");
-    }
-    if (this.state.civilizationAlive && this.state.climateBalance <= -CLIMATE_LIMIT) {
-      this.startClimateEvent(nowMs, "freeze");
-    }
-
-    const stressDisruption = this.updateTidalStress(
+    const primaryStressDisruption = this.updateBodyTidalStress(
+      "planet",
       positions,
       starVelocities,
       simulationDeltaSeconds
     );
-    if (stressDisruption) {
-      this.startPlanetDeathEvent(nowMs, stressDisruption.starIndex, positions, "disruption");
-      this.state.currentPositions = clonePositions(this.state.event.positions);
-      return;
+    if (primaryStressDisruption && this.state.planet) {
+      this.handleBodyLoss(
+        "planet",
+        nowMs,
+        positions,
+        `Proxima Centauri b разорвана у ${stars[primaryStressDisruption.starIndex].name}`,
+        this.createBodyEffect(
+          this.state.planet,
+          primaryStressDisruption.starIndex,
+          positions,
+          "disruption",
+          nowMs,
+          "Proxima Centauri b"
+        )
+      );
+    }
+    const companionStressDisruption = this.updateBodyTidalStress(
+      "companion",
+      positions,
+      starVelocities,
+      simulationDeltaSeconds
+    );
+    if (companionStressDisruption && this.state.companion) {
+      this.handleBodyLoss(
+        "companion",
+        nowMs,
+        positions,
+        `Proxima Centauri c разорвана у ${stars[companionStressDisruption.starIndex].name}`,
+        this.createBodyEffect(
+          this.state.companion,
+          companionStressDisruption.starIndex,
+          positions,
+          "disruption",
+          nowMs,
+          "Proxima Centauri c"
+        )
+      );
     }
 
-    const planetDeath = this.detectPlanetDeath(positions, time);
-    if (planetDeath) {
-      this.startPlanetDeathEvent(nowMs, planetDeath.starIndex, positions, planetDeath.mode);
-      this.state.currentPositions = clonePositions(this.state.event.positions);
+    const planetImpact = this.detectBodyImpact(this.state.planet, positions);
+    if (planetImpact && this.state.planet) {
+      this.handleBodyLoss(
+        "planet",
+        nowMs,
+        positions,
+        `Proxima Centauri b упала на ${stars[planetImpact.starIndex].name}`,
+        this.createBodyEffect(
+          this.state.planet,
+          planetImpact.starIndex,
+          positions,
+          "impact",
+          nowMs,
+          "Proxima Centauri b"
+        )
+      );
+    }
+
+    const companionImpact = this.detectBodyImpact(this.state.companion, positions);
+    if (companionImpact && this.state.companion) {
+      this.handleBodyLoss(
+        "companion",
+        nowMs,
+        positions,
+        `Proxima Centauri c упала на ${stars[companionImpact.starIndex].name}`,
+        this.createBodyEffect(
+          this.state.companion,
+          companionImpact.starIndex,
+          positions,
+          "impact",
+          nowMs,
+          "Proxima Centauri c"
+        )
+      );
     }
   }
 
@@ -1284,13 +1461,29 @@ class SimulationEngine {
       topCivilizations: this.state.topCivilizations.map((entry) => ({ ...entry })),
       homeStarName: stars[this.state.homeStarIndex].name,
       regimeName: this.state.regimeName,
-      climate: getClimateSummary(this.state.lastFlux, this.state.climateBalance),
+      planetInfo: this.getBodyReadout(
+        "Proxima Centauri b",
+        this.state.planet,
+        displayedPositions
+      ),
+      companionInfo: this.getBodyReadout(
+        "Proxima Centauri c",
+        this.state.companion,
+        displayedPositions
+      ),
       tidalStress: this.state.tidalStress,
       tidalStressRatio: this.state.tidalStress / TIDAL_STRESS_LIMIT,
       tidalStressSourceName:
         this.state.tidalStressSourceIndex === null
           ? null
           : stars[this.state.tidalStressSourceIndex].name,
+      companionTidalStress: this.state.companionTidalStress,
+      companionTidalStressRatio:
+        this.state.companionTidalStress / TIDAL_STRESS_LIMIT,
+      companionTidalStressSourceName:
+        this.state.companionTidalStressSourceIndex === null
+          ? null
+          : stars[this.state.companionTidalStressSourceIndex].name,
       statusText: this.state.statusText,
       banner: this.state.bannerText
         ? {
@@ -1302,6 +1495,18 @@ class SimulationEngine {
       planet: this.state.planet ? { ...this.state.planet } : null,
       companion: this.state.companion ? { ...this.state.companion } : null,
       event: eventSnapshot,
+      effects: this.state.effects.map((effect) => ({
+        ...effect,
+        positions: clonePositions(effect.positions),
+        fragments: effect.fragments ? cloneFragments(effect.fragments) : [],
+        elapsedMs: Math.max(0, this.state.nowMs - effect.startMs),
+        durationMs: Math.max(effect.restartAtMs - effect.startMs, 1),
+        progress: Math.min(
+          1,
+          Math.max(0, this.state.nowMs - effect.startMs) /
+            Math.max(effect.restartAtMs - effect.startMs, 1)
+        ),
+      })),
       deathPulse: this.getDeathPulseSnapshot(),
       rebirthPulseProgress:
         this.state.civilizationAlive && this.state.rebirthPulseUntilMs > this.state.nowMs
