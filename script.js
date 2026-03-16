@@ -81,7 +81,7 @@ function clearTrails() {
 function recordTrails(snapshot) {
   snapshot.positions.forEach((point, index) => {
     const trail = viewerState.trails[index];
-    trail.push({ x: point.x, y: point.y });
+    trail.push({ x: point.x, y: point.y, nowMs: snapshot.nowMs });
     while (trail.length > STAR_TRAIL_LENGTH) {
       trail.shift();
     }
@@ -91,7 +91,11 @@ function recordTrails(snapshot) {
     return;
   }
 
-  viewerState.planetTrail.push({ x: snapshot.planet.x, y: snapshot.planet.y });
+  viewerState.planetTrail.push({
+    x: snapshot.planet.x,
+    y: snapshot.planet.y,
+    nowMs: snapshot.nowMs,
+  });
   while (viewerState.planetTrail.length > PLANET_TRAIL_LENGTH) {
     viewerState.planetTrail.shift();
   }
@@ -268,14 +272,17 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
   return snapshot;
 }
 
-function getRenderSnapshot() {
+function getRenderFrame() {
   if (!viewerState.latestSnapshot) {
     return null;
   }
 
   const snapshots = viewerState.snapshotBuffer;
   if (snapshots.length === 0 || viewerState.serverTimeOffsetMs === null) {
-    return viewerState.latestSnapshot;
+    return {
+      snapshot: viewerState.latestSnapshot,
+      renderServerTimeMs: viewerState.latestSnapshot.nowMs,
+    };
   }
 
   const renderServerTimeMs =
@@ -286,18 +293,29 @@ function getRenderSnapshot() {
   );
 
   if (nextIndex === -1) {
-    return snapshots[snapshots.length - 1].snapshot;
+    const snapshot = snapshots[snapshots.length - 1].snapshot;
+    return {
+      snapshot,
+      renderServerTimeMs: snapshot.nowMs,
+    };
   }
 
   if (nextIndex === 0) {
-    return snapshots[0].snapshot;
+    const snapshot = snapshots[0].snapshot;
+    return {
+      snapshot,
+      renderServerTimeMs: snapshot.nowMs,
+    };
   }
 
   const previous = snapshots[nextIndex - 1].snapshot;
   const next = snapshots[nextIndex].snapshot;
   const durationMs = Math.max(next.nowMs - previous.nowMs, 1);
   const alpha = clamp01((renderServerTimeMs - previous.nowMs) / durationMs);
-  return interpolateSnapshot(previous, next, alpha, renderServerTimeMs);
+  return {
+    snapshot: interpolateSnapshot(previous, next, alpha, renderServerTimeMs),
+    renderServerTimeMs,
+  };
 }
 
 function drawBackground(width, height) {
@@ -335,6 +353,21 @@ function getTrailPoints(trail, maxPoints = 90) {
   return points;
 }
 
+function buildRenderTrailPoints(trail, renderServerTimeMs, currentPoint, maxPoints) {
+  const visiblePoints = trail.filter((point) => point.nowMs <= renderServerTimeMs);
+  if (currentPoint) {
+    const lastPoint = visiblePoints[visiblePoints.length - 1];
+    if (
+      !lastPoint ||
+      lastPoint.x !== currentPoint.x ||
+      lastPoint.y !== currentPoint.y
+    ) {
+      visiblePoints.push(currentPoint);
+    }
+  }
+  return getTrailPoints(visiblePoints, maxPoints);
+}
+
 function strokeTrailLayer(cx, cy, points, options) {
   const {
     startRatio,
@@ -363,8 +396,13 @@ function strokeTrailLayer(cx, cy, points, options) {
   }
 }
 
-function drawTrail(cx, cy, trail, star) {
-  const points = getTrailPoints(trail, 70);
+function drawTrail(cx, cy, trail, star, renderServerTimeMs, currentPoint) {
+  const points = buildRenderTrailPoints(
+    trail,
+    renderServerTimeMs,
+    currentPoint,
+    70
+  );
   if (points.length < 2) {
     return;
   }
@@ -394,8 +432,13 @@ function drawTrail(cx, cy, trail, star) {
   ctx.restore();
 }
 
-function drawPlanetTrail(cx, cy) {
-  const points = getTrailPoints(viewerState.planetTrail, 160);
+function drawPlanetTrail(cx, cy, renderServerTimeMs, currentPoint) {
+  const points = buildRenderTrailPoints(
+    viewerState.planetTrail,
+    renderServerTimeMs,
+    currentPoint,
+    160
+  );
   if (points.length < 2) {
     return;
   }
@@ -572,11 +615,11 @@ function drawFragments(cx, cy, fragments, elapsedMs, progress) {
   ctx.restore();
 }
 
-function drawCommonScene(cx, cy) {
+function drawCommonScene(cx, cy, positions, planet, renderServerTimeMs) {
   viewerState.trails.forEach((trail, index) => {
-    drawTrail(cx, cy, trail, stars[index]);
+    drawTrail(cx, cy, trail, stars[index], renderServerTimeMs, positions[index]);
   });
-  drawPlanetTrail(cx, cy);
+  drawPlanetTrail(cx, cy, renderServerTimeMs, planet);
 
   ctx.beginPath();
   ctx.arc(cx, cy, 3, 0, Math.PI * 2);
@@ -584,11 +627,18 @@ function drawCommonScene(cx, cy) {
   ctx.fill();
 }
 
-function drawEventFrame(cx, cy, event) {
+function drawEventFrame(cx, cy, snapshot, renderServerTimeMs) {
+  const event = snapshot.event;
   const hiddenStars =
     event.type === "starCollision" ? new Set(event.collisionPair) : new Set();
 
-  drawCommonScene(cx, cy);
+  drawCommonScene(
+    cx,
+    cy,
+    event.positions,
+    event.planetPosition || snapshot.planet,
+    renderServerTimeMs
+  );
 
   event.positions.forEach((point, index) => {
     if (!hiddenStars.has(index)) {
@@ -622,10 +672,11 @@ function drawEventFrame(cx, cy, event) {
 }
 
 function render() {
-  const snapshot = getRenderSnapshot();
-  if (!snapshot) {
+  const frame = getRenderFrame();
+  if (!frame) {
     return;
   }
+  const { snapshot, renderServerTimeMs } = frame;
 
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -636,11 +687,11 @@ function render() {
   const cy = height / 2;
 
   if (snapshot.event) {
-    drawEventFrame(cx, cy, snapshot.event);
+    drawEventFrame(cx, cy, snapshot, renderServerTimeMs);
     return;
   }
 
-  drawCommonScene(cx, cy);
+  drawCommonScene(cx, cy, snapshot.positions, snapshot.planet, renderServerTimeMs);
 
   snapshot.positions.forEach((point, index) => {
     drawStar(cx + point.x, cy + point.y, stars[index]);
