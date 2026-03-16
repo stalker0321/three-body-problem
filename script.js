@@ -18,6 +18,7 @@ const INTERPOLATION_DELAY_MS = 120;
 const MAX_SNAPSHOT_BUFFER = 8;
 const TRAIL_SAMPLE_MS = 1000 / 60;
 const MIN_TRAIL_POINT_DISTANCE = 0.35;
+const MAX_TRAIL_SEGMENT_LENGTH = 6;
 
 const stars = [
   {
@@ -363,6 +364,20 @@ function appendTrailSample(trail, point, nowMs, maxLength) {
     ) {
       return;
     }
+
+    const segments = Math.max(1, Math.ceil(distance / MAX_TRAIL_SEGMENT_LENGTH));
+    for (let index = 1; index <= segments; index += 1) {
+      const alpha = index / segments;
+      trail.push({
+        x: lerp(lastPoint.x, point.x, alpha),
+        y: lerp(lastPoint.y, point.y, alpha),
+        nowMs: lerp(lastPoint.nowMs, nowMs, alpha),
+      });
+    }
+    while (trail.length > maxLength) {
+      trail.shift();
+    }
+    return;
   }
 
   trail.push({ x: point.x, y: point.y, nowMs });
