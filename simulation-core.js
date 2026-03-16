@@ -33,6 +33,8 @@ const PLANET_ESCAPE_RADIUS = 760;
 const PLANET_ESCAPE_YEARS = 800;
 const PLANET_START_HILL_RADIUS_FRACTION = 0.288;
 const PLANET_START_ORBIT_ECCENTRICITY = 0.15;
+const BINARY_HOST_START_HILL_RADIUS_FRACTION = 0.16;
+const BINARY_HOST_START_ORBIT_ECCENTRICITY = 0.04;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
 
@@ -523,10 +525,19 @@ class SimulationEngine {
     );
     const targetHostFlux = Math.max(0.18, TARGET_START_FLUX - backgroundFluxAtHost);
     const habitableRadius = Math.sqrt(STAR_LUMINOSITIES[hostIndex] / targetHostFlux);
-    const startRadius = Math.max(
-      stableHillRadius * PLANET_START_HILL_RADIUS_FRACTION,
-      habitableRadius
-    );
+    const startRadius =
+      hostIndex === 2
+        ? Math.max(
+            stableHillRadius * PLANET_START_HILL_RADIUS_FRACTION,
+            habitableRadius
+          )
+        : Math.max(
+            stars[hostIndex].size * 2.8,
+            Math.min(
+              stableHillRadius * BINARY_HOST_START_HILL_RADIUS_FRACTION,
+              distance * 0.18
+            )
+          );
     const radial = {
       x: hostRelativePosition.x / distance,
       y: hostRelativePosition.y / distance,
@@ -541,8 +552,12 @@ class SimulationEngine {
       x: -radial.y * orbitDirection,
       y: radial.x * orbitDirection,
     };
+    const startOrbitEccentricity =
+      hostIndex === 2
+        ? PLANET_START_ORBIT_ECCENTRICITY
+        : BINARY_HOST_START_ORBIT_ECCENTRICITY;
     const orbitalSpeed = Math.sqrt(
-      (PLANET_GRAVITY * stars[2].mass * (1 - PLANET_START_ORBIT_ECCENTRICITY)) /
+      (PLANET_GRAVITY * stars[hostIndex].mass * (1 - startOrbitEccentricity)) /
         startRadius
     );
     const offset = {
