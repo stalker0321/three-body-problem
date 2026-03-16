@@ -33,8 +33,9 @@ const PLANET_ESCAPE_RADIUS = 760;
 const PLANET_ESCAPE_YEARS = 800;
 const PLANET_START_HILL_RADIUS_FRACTION = 0.288;
 const PLANET_START_ORBIT_ECCENTRICITY = 0.15;
-const BINARY_HOST_START_HILL_RADIUS_FRACTION = 0.16;
-const BINARY_HOST_START_ORBIT_ECCENTRICITY = 0.04;
+const BINARY_HOST_START_HILL_RADIUS_FRACTION = 0.42;
+const BINARY_HOST_MAX_DISTANCE_FRACTION = 0.32;
+const BINARY_HOST_START_ORBIT_ECCENTRICITY = 0.08;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
 
@@ -532,10 +533,11 @@ class SimulationEngine {
             habitableRadius
           )
         : Math.max(
-            stars[hostIndex].size * 2.8,
+            stars[hostIndex].size * 3.1,
             Math.min(
+              habitableRadius,
               stableHillRadius * BINARY_HOST_START_HILL_RADIUS_FRACTION,
-              distance * 0.18
+              distance * BINARY_HOST_MAX_DISTANCE_FRACTION
             )
           );
     const radial = {
