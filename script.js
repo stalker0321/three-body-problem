@@ -14,6 +14,8 @@ const speedButtons = Array.from(document.querySelectorAll("[data-speed]"));
 
 const STAR_TRAIL_LENGTH = 150;
 const PLANET_TRAIL_LENGTH = Math.max(220, STAR_TRAIL_LENGTH * 4);
+const INTERPOLATION_DELAY_MS = 120;
+const MAX_SNAPSHOT_BUFFER = 8;
 
 const stars = [
   {
@@ -47,12 +49,14 @@ const planetStyle = {
 };
 
 const viewerState = {
-  snapshot: null,
+  latestSnapshot: null,
+  snapshotBuffer: [],
   trails: stars.map(() => []),
   planetTrail: [],
   eventSource: null,
   reconnectTimer: 0,
   lastEpoch: 0,
+  serverTimeOffsetMs: null,
 };
 
 function resizeCanvas() {
@@ -61,7 +65,6 @@ function resizeCanvas() {
   canvas.width = Math.round(bounds.width * ratio);
   canvas.height = Math.round(bounds.height * ratio);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  render();
 }
 
 function formatYears(years) {
@@ -142,6 +145,159 @@ function updateUi(snapshot) {
   renderCivilizationRanking(snapshot.topCivilizations);
   updateBanner(snapshot.banner);
   updateSpeedUi(snapshot.timeScale);
+}
+
+function lerp(start, end, alpha) {
+  return start + (end - start) * alpha;
+}
+
+function lerpPoint(from, to, alpha) {
+  return {
+    x: lerp(from.x, to.x, alpha),
+    y: lerp(from.y, to.y, alpha),
+  };
+}
+
+function clamp01(value) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function cloneValue(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function interpolateEvent(fromEvent, toEvent, alpha, renderServerTimeMs) {
+  if (!fromEvent || !toEvent || fromEvent.type !== toEvent.type) {
+    return cloneValue(toEvent || fromEvent);
+  }
+
+  const event = cloneValue(toEvent);
+  event.positions = fromEvent.positions.map((point, index) =>
+    lerpPoint(point, toEvent.positions[index], alpha)
+  );
+  if (fromEvent.planetPosition && toEvent.planetPosition) {
+    event.planetPosition = lerpPoint(
+      fromEvent.planetPosition,
+      toEvent.planetPosition,
+      alpha
+    );
+  }
+
+  if (fromEvent.type === "planetImpact") {
+    event.impactAngle = lerp(fromEvent.impactAngle, toEvent.impactAngle, alpha);
+  }
+
+  if (event.type === "planetDisruption" || event.type === "starCollision") {
+    event.fragments = cloneValue(toEvent.fragments);
+  }
+
+  const durationMs = Math.max(event.restartAtMs - event.startMs, 1);
+  event.elapsedMs = Math.max(0, renderServerTimeMs - event.startMs);
+  event.progress = clamp01(event.elapsedMs / durationMs);
+  return event;
+}
+
+function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs) {
+  if (!fromSnapshot) {
+    return cloneValue(toSnapshot);
+  }
+  if (!toSnapshot || fromSnapshot.epochs !== toSnapshot.epochs) {
+    return cloneValue(fromSnapshot);
+  }
+
+  const snapshot = cloneValue(toSnapshot);
+  snapshot.positions = fromSnapshot.positions.map((point, index) =>
+    lerpPoint(point, toSnapshot.positions[index], alpha)
+  );
+  snapshot.yearCountYears = lerp(
+    fromSnapshot.yearCountYears,
+    toSnapshot.yearCountYears,
+    alpha
+  );
+  snapshot.civilizationAgeYears = lerp(
+    fromSnapshot.civilizationAgeYears,
+    toSnapshot.civilizationAgeYears,
+    alpha
+  );
+  snapshot.climate = {
+    ...toSnapshot.climate,
+    flux: lerp(fromSnapshot.climate.flux, toSnapshot.climate.flux, alpha),
+    balance: lerp(fromSnapshot.climate.balance, toSnapshot.climate.balance, alpha),
+  };
+
+  if (fromSnapshot.planet && toSnapshot.planet) {
+    snapshot.planet = {
+      ...toSnapshot.planet,
+      ...lerpPoint(fromSnapshot.planet, toSnapshot.planet, alpha),
+      vx: lerp(fromSnapshot.planet.vx, toSnapshot.planet.vx, alpha),
+      vy: lerp(fromSnapshot.planet.vy, toSnapshot.planet.vy, alpha),
+    };
+  } else if (!fromSnapshot.planet || !toSnapshot.planet) {
+    snapshot.planet = toSnapshot.planet || fromSnapshot.planet;
+  }
+
+  if (fromSnapshot.deathPulse && toSnapshot.deathPulse) {
+    snapshot.deathPulse = {
+      mode: toSnapshot.deathPulse.mode,
+      progress: lerp(
+        fromSnapshot.deathPulse.progress,
+        toSnapshot.deathPulse.progress,
+        alpha
+      ),
+    };
+  }
+
+  if (
+    fromSnapshot.rebirthPulseProgress !== null &&
+    toSnapshot.rebirthPulseProgress !== null
+  ) {
+    snapshot.rebirthPulseProgress = lerp(
+      fromSnapshot.rebirthPulseProgress,
+      toSnapshot.rebirthPulseProgress,
+      alpha
+    );
+  }
+
+  snapshot.event = interpolateEvent(
+    fromSnapshot.event,
+    toSnapshot.event,
+    alpha,
+    renderServerTimeMs
+  );
+
+  return snapshot;
+}
+
+function getRenderSnapshot() {
+  if (!viewerState.latestSnapshot) {
+    return null;
+  }
+
+  const snapshots = viewerState.snapshotBuffer;
+  if (snapshots.length === 0 || viewerState.serverTimeOffsetMs === null) {
+    return viewerState.latestSnapshot;
+  }
+
+  const renderServerTimeMs =
+    performance.now() - viewerState.serverTimeOffsetMs - INTERPOLATION_DELAY_MS;
+
+  let nextIndex = snapshots.findIndex(
+    (entry) => entry.snapshot.nowMs >= renderServerTimeMs
+  );
+
+  if (nextIndex === -1) {
+    return snapshots[snapshots.length - 1].snapshot;
+  }
+
+  if (nextIndex === 0) {
+    return snapshots[0].snapshot;
+  }
+
+  const previous = snapshots[nextIndex - 1].snapshot;
+  const next = snapshots[nextIndex].snapshot;
+  const durationMs = Math.max(next.nowMs - previous.nowMs, 1);
+  const alpha = clamp01((renderServerTimeMs - previous.nowMs) / durationMs);
+  return interpolateSnapshot(previous, next, alpha, renderServerTimeMs);
 }
 
 function drawBackground(width, height) {
@@ -466,7 +622,7 @@ function drawEventFrame(cx, cy, event) {
 }
 
 function render() {
-  const snapshot = viewerState.snapshot;
+  const snapshot = getRenderSnapshot();
   if (!snapshot) {
     return;
   }
@@ -511,8 +667,16 @@ function render() {
 }
 
 function applySnapshot(snapshot) {
+  const receivedAtMs = performance.now();
+  const sampleOffsetMs = receivedAtMs - snapshot.nowMs;
+  viewerState.serverTimeOffsetMs =
+    viewerState.serverTimeOffsetMs === null
+      ? sampleOffsetMs
+      : lerp(viewerState.serverTimeOffsetMs, sampleOffsetMs, 0.2);
+
   if (viewerState.lastEpoch !== snapshot.epochs) {
     clearTrails();
+    viewerState.snapshotBuffer.length = 0;
     viewerState.lastEpoch = snapshot.epochs;
   }
 
@@ -520,9 +684,15 @@ function applySnapshot(snapshot) {
     recordTrails(snapshot);
   }
 
-  viewerState.snapshot = snapshot;
+  viewerState.latestSnapshot = snapshot;
+  viewerState.snapshotBuffer.push({
+    receivedAtMs,
+    snapshot,
+  });
+  while (viewerState.snapshotBuffer.length > MAX_SNAPSHOT_BUFFER) {
+    viewerState.snapshotBuffer.shift();
+  }
   updateUi(snapshot);
-  render();
 }
 
 async function sendTimeScaleUpdate(timeScale) {
@@ -579,3 +749,7 @@ speedButtons.forEach((button) => {
 
 resizeCanvas();
 connectStream();
+requestAnimationFrame(function frame() {
+  render();
+  requestAnimationFrame(frame);
+});
