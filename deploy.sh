@@ -10,6 +10,7 @@ git push origin "${BRANCH}"
 
 ssh "${SERVER_HOST}" "
   set -euo pipefail
+  git config --global --add safe.directory '${APP_DIR}'
   cd '${APP_DIR}'
   git fetch origin '${BRANCH}'
   git checkout '${BRANCH}'
