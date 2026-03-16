@@ -16,6 +16,8 @@ const STAR_TRAIL_LENGTH = 150;
 const PLANET_TRAIL_LENGTH = Math.max(220, STAR_TRAIL_LENGTH * 4);
 const INTERPOLATION_DELAY_MS = 120;
 const MAX_SNAPSHOT_BUFFER = 8;
+const TRAIL_SAMPLE_MS = 1000 / 60;
+const MIN_TRAIL_POINT_DISTANCE = 0.35;
 
 const stars = [
   {
@@ -57,6 +59,7 @@ const viewerState = {
   reconnectTimer: 0,
   lastEpoch: 0,
   serverTimeOffsetMs: null,
+  lastTrailSampleTimeMs: null,
 };
 
 function resizeCanvas() {
@@ -76,29 +79,7 @@ function clearTrails() {
     trail.length = 0;
   });
   viewerState.planetTrail.length = 0;
-}
-
-function recordTrails(snapshot) {
-  snapshot.positions.forEach((point, index) => {
-    const trail = viewerState.trails[index];
-    trail.push({ x: point.x, y: point.y, nowMs: snapshot.nowMs });
-    while (trail.length > STAR_TRAIL_LENGTH) {
-      trail.shift();
-    }
-  });
-
-  if (!snapshot.planet) {
-    return;
-  }
-
-  viewerState.planetTrail.push({
-    x: snapshot.planet.x,
-    y: snapshot.planet.y,
-    nowMs: snapshot.nowMs,
-  });
-  while (viewerState.planetTrail.length > PLANET_TRAIL_LENGTH) {
-    viewerState.planetTrail.shift();
-  }
+  viewerState.lastTrailSampleTimeMs = null;
 }
 
 function updateSpeedUi(timeScale) {
@@ -366,6 +347,57 @@ function buildRenderTrailPoints(trail, renderServerTimeMs, currentPoint, maxPoin
     }
   }
   return getTrailPoints(visiblePoints, maxPoints);
+}
+
+function appendTrailSample(trail, point, nowMs, maxLength) {
+  const lastPoint = trail[trail.length - 1];
+  if (lastPoint) {
+    if (nowMs <= lastPoint.nowMs) {
+      return;
+    }
+
+    const distance = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
+    if (
+      distance < MIN_TRAIL_POINT_DISTANCE &&
+      nowMs - lastPoint.nowMs < TRAIL_SAMPLE_MS * 1.5
+    ) {
+      return;
+    }
+  }
+
+  trail.push({ x: point.x, y: point.y, nowMs });
+  while (trail.length > maxLength) {
+    trail.shift();
+  }
+}
+
+function updateRenderTrails(snapshot, renderServerTimeMs) {
+  if (!snapshot.planet || snapshot.event) {
+    return;
+  }
+
+  if (
+    viewerState.lastTrailSampleTimeMs !== null &&
+    renderServerTimeMs - viewerState.lastTrailSampleTimeMs < TRAIL_SAMPLE_MS
+  ) {
+    return;
+  }
+
+  snapshot.positions.forEach((point, index) => {
+    appendTrailSample(
+      viewerState.trails[index],
+      point,
+      renderServerTimeMs,
+      STAR_TRAIL_LENGTH
+    );
+  });
+  appendTrailSample(
+    viewerState.planetTrail,
+    snapshot.planet,
+    renderServerTimeMs,
+    PLANET_TRAIL_LENGTH
+  );
+  viewerState.lastTrailSampleTimeMs = renderServerTimeMs;
 }
 
 function strokeTrailLayer(cx, cy, points, options) {
@@ -677,6 +709,7 @@ function render() {
     return;
   }
   const { snapshot, renderServerTimeMs } = frame;
+  updateRenderTrails(snapshot, renderServerTimeMs);
 
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -729,10 +762,6 @@ function applySnapshot(snapshot) {
     clearTrails();
     viewerState.snapshotBuffer.length = 0;
     viewerState.lastEpoch = snapshot.epochs;
-  }
-
-  if (!snapshot.event) {
-    recordTrails(snapshot);
   }
 
   viewerState.latestSnapshot = snapshot;
