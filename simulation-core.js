@@ -5,7 +5,7 @@ const PLANET_INTEGRATION_STEP_SECONDS = 0.01;
 const PLANET_MAX_INTEGRATION_STEPS = 24;
 const PLANET_IMPACT_RESTART_MS = 1450;
 const STAR_COLLISION_RESTART_MS = 2200;
-const CIVILIZATION_REBIRTH_MS = 10000;
+const CIVILIZATION_REBIRTH_YEARS = 30;
 const CIVILIZATION_BANNER_MS = 2600;
 const CIVILIZATION_DEATH_PULSE_MS = 1000;
 const CIVILIZATION_REBIRTH_PULSE_MS = 1400;
@@ -30,7 +30,7 @@ const CLIMATE_LIMIT = 100;
 const PLANET_INTERACTION_RADIUS = 190;
 const PLANET_ESCAPE_RADIUS = 760;
 const PLANET_ESCAPE_YEARS = 800;
-const PLANET_START_HILL_RADIUS_FRACTION = 0.24;
+const PLANET_START_HILL_RADIUS_FRACTION = 0.288;
 const PLANET_START_ORBIT_ECCENTRICITY = 0.15;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
@@ -164,7 +164,7 @@ class SimulationEngine {
       civilizationAlive: false,
       civilizationLogged: false,
       previousCivilizationYears: 0,
-      pendingRebirthAtMs: 0,
+      pendingRebirthAtSimulationSeconds: 0,
       pendingRebirthReason: null,
       deathPulseStartMs: 0,
       rebirthPulseStartMs: 0,
@@ -372,7 +372,7 @@ class SimulationEngine {
     this.state.civilizationLogged = false;
     this.state.civilizationStartTimeSeconds = this.state.simulationTimeSeconds;
     this.state.previousCivilizationYears = 0;
-    this.state.pendingRebirthAtMs = 0;
+    this.state.pendingRebirthAtSimulationSeconds = 0;
     this.state.pendingRebirthReason = null;
     this.state.deathPulseStartMs = 0;
     this.state.climateBalance = 0;
@@ -392,7 +392,9 @@ class SimulationEngine {
   }
 
   queueCivilizationRebirth(timeMs, reasonVariant = null) {
-    this.state.pendingRebirthAtMs = timeMs + CIVILIZATION_REBIRTH_MS;
+    this.state.pendingRebirthAtSimulationSeconds =
+      this.state.simulationTimeSeconds +
+      CIVILIZATION_REBIRTH_YEARS / YEARS_PER_SIMULATION_SECOND;
     this.state.pendingRebirthReason = reasonVariant;
     this.state.deathPulseStartMs = timeMs;
   }
@@ -529,7 +531,7 @@ class SimulationEngine {
     this.state.lastFlux = this.computeStellarFlux(this.state.currentPositions);
 
     if (allowImmediateCivilizationRebirth) {
-      this.state.pendingRebirthAtMs = timeMs;
+      this.state.pendingRebirthAtSimulationSeconds = this.state.simulationTimeSeconds;
       this.state.pendingRebirthReason = null;
       this.state.deathPulseStartMs = 0;
     }
@@ -699,7 +701,7 @@ class SimulationEngine {
     );
     this.updateStatus(
       mode === "burn" ? "Цивилизация сгорела от жары" : "Цивилизация замёрзла",
-      this.state.pendingRebirthAtMs
+      0
     );
   }
 
@@ -848,16 +850,19 @@ class SimulationEngine {
     return null;
   }
 
-  canBeginCivilization(timeMs) {
+  canBeginCivilization() {
     if (this.state.civilizationAlive || this.state.lastFlux < CIVILIZATION_REBIRTH_TEMPERATURE) {
       return false;
     }
 
-    if (this.state.civilizations === 0 && !this.state.pendingRebirthAtMs) {
+    if (this.state.civilizations === 0 && !this.state.pendingRebirthAtSimulationSeconds) {
       return true;
     }
 
-    return Boolean(this.state.pendingRebirthAtMs && timeMs >= this.state.pendingRebirthAtMs);
+    return Boolean(
+      this.state.pendingRebirthAtSimulationSeconds &&
+        this.state.simulationTimeSeconds >= this.state.pendingRebirthAtSimulationSeconds
+    );
   }
 
   step(deltaMs, nowMs) {
@@ -907,7 +912,7 @@ class SimulationEngine {
     }
 
     this.updateClimate(simulationDeltaSeconds, positions);
-    if (this.canBeginCivilization(nowMs)) {
+    if (this.canBeginCivilization()) {
       this.beginCivilization(nowMs, {
         incrementCount: true,
         showBannerText:

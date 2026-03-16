@@ -19,6 +19,7 @@ const MAX_SNAPSHOT_BUFFER = 8;
 const TRAIL_SAMPLE_MS = 1000 / 60;
 const MIN_TRAIL_POINT_DISTANCE = 0.35;
 const MAX_TRAIL_SEGMENT_LENGTH = 6;
+const VIEW_SCALE = 0.8;
 
 const stars = [
   {
@@ -733,36 +734,41 @@ function render() {
 
   const cx = width / 2;
   const cy = height / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(VIEW_SCALE, VIEW_SCALE);
 
   if (snapshot.event) {
-    drawEventFrame(cx, cy, snapshot, renderServerTimeMs);
+    drawEventFrame(0, 0, snapshot, renderServerTimeMs);
+    ctx.restore();
     return;
   }
 
-  drawCommonScene(cx, cy, snapshot.positions, snapshot.planet, renderServerTimeMs);
+  drawCommonScene(0, 0, snapshot.positions, snapshot.planet, renderServerTimeMs);
 
   snapshot.positions.forEach((point, index) => {
-    drawStar(cx + point.x, cy + point.y, stars[index]);
+    drawStar(point.x, point.y, stars[index]);
   });
 
   if (snapshot.planet) {
-    drawPlanet(cx + snapshot.planet.x, cy + snapshot.planet.y);
+    drawPlanet(snapshot.planet.x, snapshot.planet.y);
     if (snapshot.deathPulse) {
       drawClimatePulse(
-        cx + snapshot.planet.x,
-        cy + snapshot.planet.y,
+        snapshot.planet.x,
+        snapshot.planet.y,
         snapshot.deathPulse.mode,
         snapshot.deathPulse.progress
       );
     } else if (snapshot.rebirthPulseProgress !== null) {
       drawClimatePulse(
-        cx + snapshot.planet.x,
-        cy + snapshot.planet.y,
+        snapshot.planet.x,
+        snapshot.planet.y,
         "rebirth",
         snapshot.rebirthPulseProgress
       );
     }
   }
+  ctx.restore();
 }
 
 function applySnapshot(snapshot) {
