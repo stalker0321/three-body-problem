@@ -258,6 +258,259 @@ h1 {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03));
 }
 
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.page-header-copy {
+  max-width: 760px;
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-actions-inline {
+  margin-bottom: 16px;
+  justify-content: flex-start;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.nav-link:hover,
+.time-button:hover {
+  color: var(--text);
+  border-color: rgba(247, 221, 122, 0.36);
+  background: rgba(247, 221, 122, 0.12);
+}
+
+.stats-shell {
+  display: grid;
+  gap: 22px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stats-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(7, 11, 19, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.stats-card strong {
+  display: block;
+  margin-top: 8px;
+  font-family: "Arial Rounded MT Bold", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+  font-size: clamp(1.9rem, 3vw, 2.8rem);
+  line-height: 0.95;
+}
+
+.stats-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stats-detail-card {
+  min-height: 142px;
+}
+
+.stats-detail {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.stats-panel {
+  padding: 18px;
+}
+
+.stats-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stats-generated {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.reason-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reason-item {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.reason-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reason-item-head strong {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.reason-item-head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(247, 221, 122, 0.12);
+  color: var(--accent-a);
+  font-family: "Arial Rounded MT Bold", "Avenir Next Condensed", "Trebuchet MS", sans-serif;
+}
+
+.reason-item p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.epoch-history {
+  display: grid;
+  gap: 14px;
+}
+
+.epoch-record {
+  padding: 16px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 176, 106, 0.08), transparent 32%),
+    rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.epoch-record-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.epoch-record-head strong {
+  margin-top: 2px;
+  display: block;
+  font-size: 1.45rem;
+}
+
+.epoch-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+}
+
+.epoch-record-reason {
+  margin: 12px 0 0;
+  font-size: 1rem;
+}
+
+.epoch-civilizations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.epoch-civilization {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(7, 11, 19, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.epoch-civilization strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.epoch-civilization span {
+  display: block;
+  margin-top: 4px;
+  color: var(--accent-a);
+}
+
+.epoch-civilization p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.stats-empty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-header {
+    flex-direction: column;
+  }
+
+  .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .civilization-death-notice {
   margin: 12px 0 0;
   padding: 9px 12px;

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Статистика эпох</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="hero stats-shell">
+        <header class="page-header">
+          <div class="page-header-copy">
+            <p class="eyebrow">История симуляции</p>
+            <h1>Статистика эпох и цивилизаций</h1>
+            <p class="lead">
+              Здесь собраны итоги завершённых эпох из локального журнала сервера:
+              средние значения, главные причины катастроф и последние эпохи с
+              полным списком цивилизаций.
+            </p>
+          </div>
+          <div class="page-actions">
+            <a class="nav-link" href="/">К симуляции</a>
+            <button id="refreshStats" type="button" class="time-button">Обновить</button>
+          </div>
+        </header>
+
+        <section class="stats-grid" aria-label="Сводка">
+          <article class="stats-card">
+            <span class="stat-label">Завершённых эпох</span>
+            <strong id="totalEpochs">0</strong>
+          </article>
+          <article class="stats-card">
+            <span class="stat-label">Цивилизаций в журнале</span>
+            <strong id="totalCivilizations">0</strong>
+          </article>
+          <article class="stats-card">
+            <span class="stat-label">Средний возраст эпохи</span>
+            <strong id="averageEpochYears">0</strong>
+          </article>
+          <article class="stats-card">
+            <span class="stat-label">Средний возраст цивилизации</span>
+            <strong id="averageCivilizationYears">0</strong>
+          </article>
+        </section>
+
+        <section class="stats-split">
+          <article class="overlay-card stats-detail-card">
+            <p class="eyebrow">Самая длинная эпоха</p>
+            <strong id="longestEpochYears">Нет данных</strong>
+            <p id="longestEpochMeta" class="stats-detail"></p>
+          </article>
+          <article class="overlay-card stats-detail-card">
+            <p class="eyebrow">Самая длинная цивилизация</p>
+            <strong id="longestCivilizationYears">Нет данных</strong>
+            <p id="longestCivilizationMeta" class="stats-detail"></p>
+          </article>
+        </section>
+
+        <section class="stats-split">
+          <article class="overlay-card stats-panel">
+            <p class="eyebrow">Причины конца эпох</p>
+            <div id="epochReasonList" class="reason-list"></div>
+          </article>
+          <article class="overlay-card stats-panel">
+            <p class="eyebrow">Причины смерти цивилизаций</p>
+            <div id="civilizationReasonList" class="reason-list"></div>
+          </article>
+        </section>
+
+        <section class="overlay-card stats-panel">
+          <div class="stats-panel-header">
+            <div>
+              <p class="eyebrow">Последние эпохи</p>
+              <p id="statsGeneratedAt" class="stats-generated">Нет данных</p>
+            </div>
+          </div>
+          <div id="recentEpochs" class="epoch-history"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./stats.js"></script>
+  </body>
+</html>

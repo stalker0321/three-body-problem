@@ -44,6 +44,138 @@ function appendEpochRecord(payload) {
   });
 }
 
+function loadEpochRecords() {
+  if (!fs.existsSync(LOG_FILE)) {
+    return [];
+  }
+
+  const raw = fs.readFileSync(LOG_FILE, "utf8").trim();
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function buildReasonStats(entries, getYears) {
+  const stats = new Map();
+
+  entries.forEach((entry) => {
+    const reason = entry.reason;
+    if (!stats.has(reason)) {
+      stats.set(reason, {
+        reason,
+        count: 0,
+        totalYears: 0,
+        maxYears: 0,
+      });
+    }
+
+    const current = stats.get(reason);
+    const years = getYears(entry);
+    current.count += 1;
+    current.totalYears += years;
+    current.maxYears = Math.max(current.maxYears, years);
+  });
+
+  return Array.from(stats.values())
+    .map((entry) => ({
+      reason: entry.reason,
+      count: entry.count,
+      averageYears: entry.count > 0 ? entry.totalYears / entry.count : 0,
+      maxYears: entry.maxYears,
+    }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return right.maxYears - left.maxYears;
+    });
+}
+
+function buildStatsPayload() {
+  const epochs = loadEpochRecords();
+  const civilizations = epochs.flatMap((epoch) =>
+    (epoch.civilizations || []).map((civilization) => ({
+      ...civilization,
+      epoch: epoch.epoch,
+      epochYears: epoch.years,
+      epochEndReason: epoch.endReason,
+    }))
+  );
+
+  const totalEpochYears = epochs.reduce((sum, epoch) => sum + (epoch.years || 0), 0);
+  const totalCivilizationYears = civilizations.reduce(
+    (sum, civilization) => sum + (civilization.years || 0),
+    0
+  );
+  const longestEpoch = epochs.reduce(
+    (best, epoch) => (!best || epoch.years > best.years ? epoch : best),
+    null
+  );
+  const longestCivilization = civilizations.reduce(
+    (best, civilization) =>
+      !best || civilization.years > best.years ? civilization : best,
+    null
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totals: {
+      epochs: epochs.length,
+      civilizations: civilizations.length,
+      averageEpochYears: epochs.length > 0 ? totalEpochYears / epochs.length : 0,
+      averageCivilizationYears:
+        civilizations.length > 0 ? totalCivilizationYears / civilizations.length : 0,
+    },
+    longestEpoch:
+      longestEpoch &&
+      {
+        epoch: longestEpoch.epoch,
+        years: longestEpoch.years,
+        endReason: longestEpoch.endReason,
+        civilizationCount: longestEpoch.civilizationCount || 0,
+      },
+    longestCivilization:
+      longestCivilization &&
+      {
+        epoch: longestCivilization.epoch,
+        globalCivilization: longestCivilization.globalCivilization,
+        epochCivilization: longestCivilization.epochCivilization,
+        years: longestCivilization.years,
+        reason: longestCivilization.reason,
+      },
+    epochEndReasons: buildReasonStats(
+      epochs.map((epoch) => ({
+        reason: epoch.endReason,
+        years: epoch.years || 0,
+      })),
+      (entry) => entry.years
+    ),
+    civilizationEndReasons: buildReasonStats(civilizations, (entry) => entry.years || 0),
+    recentEpochs: epochs
+      .slice(-18)
+      .reverse()
+      .map((epoch) => ({
+        ...epoch,
+        civilizations: [...(epoch.civilizations || [])].sort(
+          (left, right) => left.epochCivilization - right.epochCivilization
+        ),
+      })),
+  };
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
@@ -202,6 +334,10 @@ function handleStateStream(request, response) {
   });
 }
 
+function handleStatsRequest(response) {
+  sendJson(response, 200, buildStatsPayload());
+}
+
 const server = http.createServer((request, response) => {
   const url = new URL(
     request.url,
@@ -210,6 +346,11 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/state") {
     sendJson(response, 200, getSnapshot());
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/stats") {
+    handleStatsRequest(response);
     return;
   }
 
@@ -224,6 +365,10 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET") {
+    if (url.pathname === "/stats" || url.pathname === "/stats/") {
+      serveStaticFile(response, "/stats.html");
+      return;
+    }
     serveStaticFile(response, url.pathname);
     return;
   }
