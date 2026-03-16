@@ -87,6 +87,7 @@ function renderRecentEpochs(epochs) {
             <span class="epoch-badge">${epoch.civilizationCount || 0} цивилизаций</span>
           </div>
           <p class="epoch-record-host">Дом: ${epoch.homeStar || "неизвестно"}</p>
+          <p class="epoch-record-host">Режим: ${epoch.regime || "неизвестно"}</p>
           <p class="epoch-record-reason">${epoch.endReason}</p>
           ${civilizationMarkup}
         </article>

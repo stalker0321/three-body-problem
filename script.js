@@ -8,9 +8,11 @@ const civilizationRanking = document.getElementById("civilizationRanking");
 const civilizationDeathNotice = document.getElementById("civilizationDeathNotice");
 const climateState = document.getElementById("climateState");
 const climateDetail = document.getElementById("climateDetail");
+const tidalStressLabel = document.getElementById("tidalStressLabel");
 const civilizationBanner = document.getElementById("civilizationBanner");
 const systemStatus = document.getElementById("systemStatus");
 const homeStarLabel = document.getElementById("homeStarLabel");
+const regimeLabel = document.getElementById("regimeLabel");
 const speedButtons = Array.from(document.querySelectorAll("[data-speed]"));
 
 const STAR_TRAIL_LENGTH = 150;
@@ -53,11 +55,19 @@ const planetStyle = {
   size: 2.2,
 };
 
+const companionStyle = {
+  color: "#d7ffb2",
+  glow: "rgba(215, 255, 178, 0.24)",
+  rgb: "215, 255, 178",
+  size: 1.45,
+};
+
 const viewerState = {
   latestSnapshot: null,
   snapshotBuffer: [],
   trails: stars.map(() => []),
   planetTrail: [],
+  companionTrail: [],
   eventSource: null,
   reconnectTimer: 0,
   lastEpoch: 0,
@@ -82,6 +92,7 @@ function clearTrails() {
     trail.length = 0;
   });
   viewerState.planetTrail.length = 0;
+  viewerState.companionTrail.length = 0;
   viewerState.lastTrailSampleTimeMs = null;
 }
 
@@ -129,8 +140,12 @@ function updateUi(snapshot) {
   civilizationDeathNotice.hidden = !snapshot.civilizationDeathVisible;
   climateState.textContent = snapshot.climate.label;
   climateDetail.textContent = snapshot.climate.detail;
+  tidalStressLabel.textContent = snapshot.tidalStressSourceName
+    ? `Приливный стресс: ${Math.round(snapshot.tidalStressRatio * 100)}% · ${snapshot.tidalStressSourceName}`
+    : `Приливный стресс: ${Math.round(snapshot.tidalStressRatio * 100)}%`;
   systemStatus.textContent = snapshot.statusText;
   homeStarLabel.textContent = `Домашняя звезда: ${snapshot.homeStarName}`;
+  regimeLabel.textContent = `Режим эпохи: ${snapshot.regimeName}`;
   renderCivilizationRanking(snapshot.topCivilizations);
   updateBanner(snapshot.banner);
   updateSpeedUi(snapshot.timeScale);
@@ -211,8 +226,19 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
   snapshot.climate = {
     ...toSnapshot.climate,
     flux: lerp(fromSnapshot.climate.flux, toSnapshot.climate.flux, alpha),
+    temperatureCelsius: lerp(
+      fromSnapshot.climate.temperatureCelsius,
+      toSnapshot.climate.temperatureCelsius,
+      alpha
+    ),
     balance: lerp(fromSnapshot.climate.balance, toSnapshot.climate.balance, alpha),
   };
+  snapshot.tidalStress = lerp(fromSnapshot.tidalStress, toSnapshot.tidalStress, alpha);
+  snapshot.tidalStressRatio = lerp(
+    fromSnapshot.tidalStressRatio,
+    toSnapshot.tidalStressRatio,
+    alpha
+  );
 
   if (fromSnapshot.planet && toSnapshot.planet) {
     snapshot.planet = {
@@ -223,6 +249,17 @@ function interpolateSnapshot(fromSnapshot, toSnapshot, alpha, renderServerTimeMs
     };
   } else if (!fromSnapshot.planet || !toSnapshot.planet) {
     snapshot.planet = toSnapshot.planet || fromSnapshot.planet;
+  }
+
+  if (fromSnapshot.companion && toSnapshot.companion) {
+    snapshot.companion = {
+      ...toSnapshot.companion,
+      ...lerpPoint(fromSnapshot.companion, toSnapshot.companion, alpha),
+      vx: lerp(fromSnapshot.companion.vx, toSnapshot.companion.vx, alpha),
+      vy: lerp(fromSnapshot.companion.vy, toSnapshot.companion.vy, alpha),
+    };
+  } else if (!fromSnapshot.companion || !toSnapshot.companion) {
+    snapshot.companion = toSnapshot.companion || fromSnapshot.companion;
   }
 
   if (fromSnapshot.deathPulse && toSnapshot.deathPulse) {
@@ -415,6 +452,14 @@ function updateRenderTrails(snapshot, renderServerTimeMs) {
     renderServerTimeMs,
     PLANET_TRAIL_LENGTH
   );
+  if (snapshot.companion) {
+    appendTrailSample(
+      viewerState.companionTrail,
+      snapshot.companion,
+      renderServerTimeMs,
+      PLANET_TRAIL_LENGTH
+    );
+  }
   viewerState.lastTrailSampleTimeMs = renderServerTimeMs;
 }
 
@@ -482,9 +527,9 @@ function drawTrail(cx, cy, trail, star, renderServerTimeMs, currentPoint) {
   ctx.restore();
 }
 
-function drawPlanetTrail(cx, cy, renderServerTimeMs, currentPoint) {
+function drawOrbitalTrail(cx, cy, trail, style, renderServerTimeMs, currentPoint) {
   const points = buildRenderTrailPoints(
-    viewerState.planetTrail,
+    trail,
     renderServerTimeMs,
     currentPoint,
     160
@@ -502,7 +547,7 @@ function drawPlanetTrail(cx, cy, renderServerTimeMs, currentPoint) {
   for (let index = 1; index < points.length; index += 1) {
     ctx.lineTo(cx + points[index].x, cy + points[index].y);
   }
-  ctx.strokeStyle = `rgba(${planetStyle.rgb}, 0.18)`;
+  ctx.strokeStyle = `rgba(${style.rgb}, 0.18)`;
   ctx.lineWidth = 1.1;
   ctx.stroke();
 
@@ -511,7 +556,7 @@ function drawPlanetTrail(cx, cy, renderServerTimeMs, currentPoint) {
   for (let index = 1; index < points.length; index += 1) {
     ctx.lineTo(cx + points[index].x, cy + points[index].y);
   }
-  ctx.strokeStyle = `rgba(${planetStyle.rgb}, 0.6)`;
+  ctx.strokeStyle = `rgba(${style.rgb}, 0.6)`;
   ctx.lineWidth = 0.45;
   ctx.stroke();
   ctx.restore();
@@ -543,24 +588,32 @@ function drawStar(x, y, star) {
   ctx.fill();
 }
 
-function drawPlanet(x, y) {
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, planetStyle.size * 4.8);
-  glow.addColorStop(0, planetStyle.glow);
+function drawOrbitalBody(x, y, style) {
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, style.size * 4.8);
+  glow.addColorStop(0, style.glow);
   glow.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(x, y, planetStyle.size * 4.8, 0, Math.PI * 2);
+  ctx.arc(x, y, style.size * 4.8, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = planetStyle.color;
+  ctx.fillStyle = style.color;
   ctx.beginPath();
-  ctx.arc(x, y, planetStyle.size, 0, Math.PI * 2);
+  ctx.arc(x, y, style.size, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
   ctx.beginPath();
-  ctx.arc(x - 1.1, y - 1.1, 1.2, 0, Math.PI * 2);
+  ctx.arc(x - style.size * 0.5, y - style.size * 0.5, style.size * 0.54, 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawPlanet(x, y) {
+  drawOrbitalBody(x, y, planetStyle);
+}
+
+function drawCompanion(x, y) {
+  drawOrbitalBody(x, y, companionStyle);
 }
 
 function drawPlanetImpactFlash(x, y, star, angle, progress) {
@@ -665,11 +718,19 @@ function drawFragments(cx, cy, fragments, elapsedMs, progress) {
   ctx.restore();
 }
 
-function drawCommonScene(cx, cy, positions, planet, renderServerTimeMs) {
+function drawCommonScene(cx, cy, positions, planet, companion, renderServerTimeMs) {
   viewerState.trails.forEach((trail, index) => {
     drawTrail(cx, cy, trail, stars[index], renderServerTimeMs, positions[index]);
   });
-  drawPlanetTrail(cx, cy, renderServerTimeMs, planet);
+  drawOrbitalTrail(cx, cy, viewerState.planetTrail, planetStyle, renderServerTimeMs, planet);
+  drawOrbitalTrail(
+    cx,
+    cy,
+    viewerState.companionTrail,
+    companionStyle,
+    renderServerTimeMs,
+    companion
+  );
 
   ctx.beginPath();
   ctx.arc(cx, cy, 3, 0, Math.PI * 2);
@@ -687,6 +748,7 @@ function drawEventFrame(cx, cy, snapshot, renderServerTimeMs) {
     cy,
     event.positions,
     event.planetPosition || snapshot.planet,
+    null,
     renderServerTimeMs
   );
 
@@ -746,7 +808,14 @@ function render() {
     return;
   }
 
-  drawCommonScene(0, 0, snapshot.positions, snapshot.planet, renderServerTimeMs);
+  drawCommonScene(
+    0,
+    0,
+    snapshot.positions,
+    snapshot.planet,
+    snapshot.companion,
+    renderServerTimeMs
+  );
 
   snapshot.positions.forEach((point, index) => {
     drawStar(point.x, point.y, stars[index]);
@@ -770,6 +839,9 @@ function render() {
       );
     }
   }
+  if (snapshot.companion) {
+    drawCompanion(snapshot.companion.x, snapshot.companion.y);
+  }
   ctx.restore();
 }
 
@@ -785,6 +857,10 @@ function applySnapshot(snapshot) {
     clearTrails();
     viewerState.snapshotBuffer.length = 0;
     viewerState.lastEpoch = snapshot.epochs;
+  }
+
+  if (viewerState.latestSnapshot?.companion && !snapshot.companion) {
+    viewerState.companionTrail.length = 0;
   }
 
   viewerState.latestSnapshot = snapshot;

@@ -37,8 +37,51 @@ const BINARY_HOST_START_HILL_RADIUS_FRACTION = 0.42;
 const BINARY_HOST_MAX_DISTANCE_FRACTION = 0.32;
 const BINARY_HOST_START_ORBIT_ECCENTRICITY = 0.08;
 const EARTHLIKE_BASELINE_TEMPERATURE_C = 15;
+const TIDAL_STRESS_LIMIT = 100;
+const TIDAL_STRESS_DECAY_RATE = 18;
+const TIDAL_ZONE_MULTIPLIER = 1.3;
+const TIDAL_STRESS_RATE = 55;
 
 const ALLOWED_TIME_SCALES = [1, 2, 4, 8];
+
+const EPOCH_REGIMES = [
+  {
+    key: "resonant-duet",
+    name: "Резонансный дуэт",
+    planetRadiusScale: 0.94,
+    planetEccentricityScale: 0.9,
+    companionRadiusScale: 1.58,
+    companionEccentricity: 0.07,
+    companionPhaseOffset: Math.PI * 0.86,
+  },
+  {
+    key: "wide-ballet",
+    name: "Широкий балет",
+    planetRadiusScale: 1.16,
+    planetEccentricityScale: 0.72,
+    companionRadiusScale: 1.94,
+    companionEccentricity: 0.1,
+    companionPhaseOffset: Math.PI * 1.08,
+  },
+  {
+    key: "chaotic-braid",
+    name: "Хаотическая коса",
+    planetRadiusScale: 0.82,
+    planetEccentricityScale: 1.25,
+    companionRadiusScale: 1.36,
+    companionEccentricity: 0.18,
+    companionPhaseOffset: -Math.PI * 0.72,
+  },
+  {
+    key: "shepherd-swing",
+    name: "Пастуший свинг",
+    planetRadiusScale: 1.04,
+    planetEccentricityScale: 1,
+    companionRadiusScale: 0.74,
+    companionEccentricity: 0.11,
+    companionPhaseOffset: Math.PI * 0.48,
+  },
+];
 
 const stars = [
   {
@@ -85,10 +128,15 @@ function cloneFragments(fragments) {
   return fragments.map((fragment) => ({ ...fragment }));
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function createEpochConfig() {
   return {
     innerPhase: randomRange(0, Math.PI * 2),
     outerPhase: randomRange(0, Math.PI * 2),
+    regime: EPOCH_REGIMES[Math.floor(Math.random() * EPOCH_REGIMES.length)],
   };
 }
 
@@ -164,12 +212,16 @@ class SimulationEngine {
       statusUntilMs: 0,
       nowMs: 0,
       epoch: null,
+      regimeName: EPOCH_REGIMES[0].name,
       planet: null,
+      companion: null,
       event: null,
       previousEpochYears: 0,
       topCivilizations: [],
       climateBalance: 0,
       lastFlux: 1,
+      tidalStress: 0,
+      tidalStressSourceIndex: null,
       civilizationAlive: false,
       civilizationLogged: false,
       previousCivilizationYears: 0,
@@ -372,6 +424,7 @@ class SimulationEngine {
       years,
       endReason,
       homeStar: stars[this.state.homeStarIndex].name,
+      regime: this.state.regimeName,
       civilizationCount: this.state.epochCivilizations.length,
       civilizations: this.state.epochCivilizations.map((entry) => ({ ...entry })),
     });
@@ -478,11 +531,35 @@ class SimulationEngine {
     return Math.floor(Math.random() * stars.length);
   }
 
-  initializePlanet(epoch) {
+  createOrbitingBody(hostIndex, orbitContext, radius, phaseOffset, eccentricity) {
+    const { host, hostVelocity, radial, tangent, orbitDirection } = orbitContext;
+    const orientedRadial = rotatePoint(radial, phaseOffset);
+    const orientedTangent = {
+      x: -orientedRadial.y * orbitDirection,
+      y: orientedRadial.x * orbitDirection,
+    };
+    const orbitalSpeed = Math.sqrt(
+      (PLANET_GRAVITY * stars[hostIndex].mass * (1 - eccentricity)) / radius
+    );
+    const offset = {
+      x: orientedRadial.x * radius,
+      y: orientedRadial.y * radius,
+    };
+
+    return {
+      x: host.x + offset.x,
+      y: host.y + offset.y,
+      vx: hostVelocity.x + orientedTangent.x * orbitalSpeed,
+      vy: hostVelocity.y + orientedTangent.y * orbitalSpeed,
+    };
+  }
+
+  initializeBodies(epoch) {
     const massAB = stars[0].mass + stars[1].mass;
     const positions = this.getStarPositions(0, epoch);
     const futurePositions = this.getStarPositions(0.03, epoch);
     const hostIndex = this.chooseHomeStarIndex();
+    const regime = epoch.regime;
     this.state.homeStarIndex = hostIndex;
     const host = positions[hostIndex];
     const hostFuture = futurePositions[hostIndex];
@@ -563,21 +640,39 @@ class SimulationEngine {
       hostIndex === 2
         ? PLANET_START_ORBIT_ECCENTRICITY
         : BINARY_HOST_START_ORBIT_ECCENTRICITY;
-    const orbitalSpeed = Math.sqrt(
-      (PLANET_GRAVITY * stars[hostIndex].mass * (1 - startOrbitEccentricity)) /
-        startRadius
+    const orbitContext = {
+      host,
+      hostVelocity,
+      radial,
+      tangent,
+      orbitDirection,
+    };
+    const primaryRadius = startRadius * regime.planetRadiusScale;
+    const primaryEccentricity = clamp(
+      startOrbitEccentricity * regime.planetEccentricityScale,
+      0.02,
+      0.36
     );
-    const offset = {
-      x: radial.x * startRadius,
-      y: radial.y * startRadius,
-    };
 
-    this.state.planet = {
-      x: host.x + offset.x,
-      y: host.y + offset.y,
-      vx: hostVelocity.x + tangent.x * orbitalSpeed,
-      vy: hostVelocity.y + tangent.y * orbitalSpeed,
-    };
+    this.state.planet = this.createOrbitingBody(
+      hostIndex,
+      orbitContext,
+      primaryRadius,
+      0,
+      primaryEccentricity
+    );
+    const companionRadius = clamp(
+      primaryRadius * regime.companionRadiusScale,
+      stars[hostIndex].size * 2.4,
+      Math.max(primaryRadius * 1.08, stableHillRadius * 0.88)
+    );
+    this.state.companion = this.createOrbitingBody(
+      hostIndex,
+      orbitContext,
+      companionRadius,
+      regime.companionPhaseOffset,
+      regime.companionEccentricity
+    );
     this.state.lastPlanetInteractionTimeSeconds = this.state.simulationTimeSeconds;
   }
 
@@ -594,10 +689,13 @@ class SimulationEngine {
       this.state.epochs += 1;
     }
     this.state.epoch = createEpochConfig();
+    this.state.regimeName = this.state.epoch.regime.name;
     this.state.epochStartTimeSeconds = this.state.simulationTimeSeconds;
     this.state.epochCivilizations = [];
     this.state.climateBalance = 0;
-    this.initializePlanet(this.state.epoch);
+    this.state.tidalStress = 0;
+    this.state.tidalStressSourceIndex = null;
+    this.initializeBodies(this.state.epoch);
     this.state.currentPositions = this.getStarPositions(0, this.state.epoch);
     this.state.lastFlux = this.computeStellarFlux(this.state.currentPositions);
 
@@ -648,7 +746,7 @@ class SimulationEngine {
   }
 
   advancePlanet(positions, deltaSeconds) {
-    if (!this.state.planet || deltaSeconds <= 0) {
+    if (deltaSeconds <= 0) {
       return;
     }
 
@@ -659,7 +757,12 @@ class SimulationEngine {
     const stepSeconds = deltaSeconds / steps;
 
     for (let step = 0; step < steps; step += 1) {
-      this.integratePlanetStep(this.state.planet, positions, stepSeconds);
+      if (this.state.planet) {
+        this.integratePlanetStep(this.state.planet, positions, stepSeconds);
+      }
+      if (this.state.companion) {
+        this.integratePlanetStep(this.state.companion, positions, stepSeconds);
+      }
     }
   }
 
@@ -736,6 +839,7 @@ class SimulationEngine {
       incrementEpochs: true,
     };
     this.state.planet = null;
+    this.state.companion = null;
     this.updateStatus(eventReason, this.state.event.restartAtMs);
   }
 
@@ -758,6 +862,7 @@ class SimulationEngine {
       incrementEpochs: true,
     };
     this.state.planet = null;
+    this.state.companion = null;
     this.updateStatus(eventReason, this.state.event.restartAtMs);
   }
 
@@ -799,6 +904,7 @@ class SimulationEngine {
     );
 
     this.state.planet = null;
+    this.state.companion = null;
     this.state.event = {
       type: "starCollision",
       startMs: timeMs,
@@ -825,13 +931,30 @@ class SimulationEngine {
   }
 
   updatePlanetInteractionState(positions) {
-    if (!this.state.planet) {
-      return;
-    }
-
-    if (this.getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) {
+    if (
+      (this.state.planet &&
+        this.getPlanetNearestStarDistance(positions) <= PLANET_INTERACTION_RADIUS) ||
+      (this.state.companion &&
+        positions.some((point) => {
+          const dx = this.state.companion.x - point.x;
+          const dy = this.state.companion.y - point.y;
+          return Math.hypot(dx, dy) <= PLANET_INTERACTION_RADIUS;
+        }))
+    ) {
       this.state.lastPlanetInteractionTimeSeconds = this.state.simulationTimeSeconds;
     }
+  }
+
+  getBodyNearestStarDistance(body, positions) {
+    if (!body) {
+      return Infinity;
+    }
+
+    return positions.reduce((minimumDistance, point) => {
+      const dx = body.x - point.x;
+      const dy = body.y - point.y;
+      return Math.min(minimumDistance, Math.hypot(dx, dy));
+    }, Infinity);
   }
 
   hasPlanetEscaped(positions) {
@@ -880,6 +1003,71 @@ class SimulationEngine {
     return false;
   }
 
+  updateTidalStress(positions, starVelocities, deltaSeconds) {
+    if (!this.state.planet) {
+      this.state.tidalStress = 0;
+      this.state.tidalStressSourceIndex = null;
+      return null;
+    }
+
+    let strongestExposure = 0;
+    let strongestSourceIndex = null;
+
+    positions.forEach((point, index) => {
+      const dx = this.state.planet.x - point.x;
+      const dy = this.state.planet.y - point.y;
+      const distance = Math.hypot(dx, dy);
+      const rocheRadius = stars[index].size * ROCHE_MULTIPLIERS[index];
+      const tidalZoneRadius = rocheRadius * TIDAL_ZONE_MULTIPLIER;
+      if (distance >= tidalZoneRadius) {
+        return;
+      }
+
+      const relativeVelocityX = this.state.planet.vx - starVelocities[index].x;
+      const relativeVelocityY = this.state.planet.vy - starVelocities[index].y;
+      const relativeSpeed = Math.hypot(relativeVelocityX, relativeVelocityY);
+      const depth =
+        distance <= rocheRadius
+          ? 1 + (rocheRadius - distance) / Math.max(rocheRadius, 1)
+          : (tidalZoneRadius - distance) / Math.max(tidalZoneRadius - rocheRadius, 1);
+      const speedFactor = clamp(110 / Math.max(relativeSpeed, 38), 0.42, 1.9);
+      const exposure = depth * depth * speedFactor;
+
+      if (exposure > strongestExposure) {
+        strongestExposure = exposure;
+        strongestSourceIndex = index;
+      }
+    });
+
+    if (strongestExposure > 0) {
+      this.state.tidalStress = Math.min(
+        TIDAL_STRESS_LIMIT,
+        this.state.tidalStress + strongestExposure * TIDAL_STRESS_RATE * deltaSeconds
+      );
+      this.state.tidalStressSourceIndex = strongestSourceIndex;
+    } else {
+      this.state.tidalStress = Math.max(
+        0,
+        this.state.tidalStress - TIDAL_STRESS_DECAY_RATE * deltaSeconds
+      );
+      if (this.state.tidalStress === 0) {
+        this.state.tidalStressSourceIndex = null;
+      }
+    }
+
+    if (
+      this.state.tidalStress >= TIDAL_STRESS_LIMIT &&
+      this.state.tidalStressSourceIndex !== null
+    ) {
+      return {
+        starIndex: this.state.tidalStressSourceIndex,
+        mode: "disruption",
+      };
+    }
+
+    return null;
+  }
+
   detectPlanetDeath(positions, currentTime) {
     if (!this.state.planet) {
       return null;
@@ -890,19 +1078,35 @@ class SimulationEngine {
       const dy = this.state.planet.y - positions[index].y;
       const distance = Math.hypot(dx, dy);
       const impactRadius = stars[index].size;
-      const destructionRadius = impactRadius * ROCHE_MULTIPLIERS[index];
       if (distance <= impactRadius) {
         return { starIndex: index, mode: "impact" };
-      }
-      if (distance <= destructionRadius) {
-        if (this.willPlanetImpactSoon(currentTime)) {
-          return null;
-        }
-        return { starIndex: index, mode: "disruption" };
       }
     }
 
     return null;
+  }
+
+  updateCompanionState(positions) {
+    if (!this.state.companion) {
+      return;
+    }
+
+    for (let index = 0; index < positions.length; index += 1) {
+      const dx = this.state.companion.x - positions[index].x;
+      const dy = this.state.companion.y - positions[index].y;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= stars[index].size) {
+        this.state.companion = null;
+        return;
+      }
+    }
+
+    if (
+      Math.hypot(this.state.companion.x, this.state.companion.y) >
+      PLANET_ESCAPE_RADIUS * 1.35
+    ) {
+      this.state.companion = null;
+    }
   }
 
   getCollisionPair(positions) {
@@ -966,6 +1170,7 @@ class SimulationEngine {
     const time = this.state.simulationTimeSeconds - this.state.epochStartTimeSeconds;
     const positions = this.getStarPositions(time);
     this.state.currentPositions = positions;
+    const starVelocities = this.getStarVelocities(time);
 
     const collisionPair = this.getCollisionPair(positions);
     if (collisionPair) {
@@ -975,6 +1180,7 @@ class SimulationEngine {
     }
 
     this.advancePlanet(positions, simulationDeltaSeconds);
+    this.updateCompanionState(positions);
     this.updatePlanetInteractionState(positions);
     if (this.hasPlanetEscaped(positions)) {
       this.startPlanetEscapeEvent(nowMs, positions);
@@ -995,6 +1201,17 @@ class SimulationEngine {
     }
     if (this.state.civilizationAlive && this.state.climateBalance <= -CLIMATE_LIMIT) {
       this.startClimateEvent(nowMs, "freeze");
+    }
+
+    const stressDisruption = this.updateTidalStress(
+      positions,
+      starVelocities,
+      simulationDeltaSeconds
+    );
+    if (stressDisruption) {
+      this.startPlanetDeathEvent(nowMs, stressDisruption.starIndex, positions, "disruption");
+      this.state.currentPositions = clonePositions(this.state.event.positions);
+      return;
     }
 
     const planetDeath = this.detectPlanetDeath(positions, time);
@@ -1066,7 +1283,14 @@ class SimulationEngine {
         !this.state.civilizationAlive && this.state.civilizations > 0,
       topCivilizations: this.state.topCivilizations.map((entry) => ({ ...entry })),
       homeStarName: stars[this.state.homeStarIndex].name,
+      regimeName: this.state.regimeName,
       climate: getClimateSummary(this.state.lastFlux, this.state.climateBalance),
+      tidalStress: this.state.tidalStress,
+      tidalStressRatio: this.state.tidalStress / TIDAL_STRESS_LIMIT,
+      tidalStressSourceName:
+        this.state.tidalStressSourceIndex === null
+          ? null
+          : stars[this.state.tidalStressSourceIndex].name,
       statusText: this.state.statusText,
       banner: this.state.bannerText
         ? {
@@ -1076,6 +1300,7 @@ class SimulationEngine {
         : null,
       positions: displayedPositions,
       planet: this.state.planet ? { ...this.state.planet } : null,
+      companion: this.state.companion ? { ...this.state.companion } : null,
       event: eventSnapshot,
       deathPulse: this.getDeathPulseSnapshot(),
       rebirthPulseProgress:
