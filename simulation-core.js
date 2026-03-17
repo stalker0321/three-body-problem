@@ -117,8 +117,36 @@ const stars = [
   },
 ];
 
-function randomRange(min, max) {
-  return min + Math.random() * (max - min);
+function normalizeSeed(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.abs(Math.trunc(value)) >>> 0;
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  return (Date.now() ^ Math.trunc(Math.random() * 0xffffffff)) >>> 0;
+}
+
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomRange(min, max, random = Math.random) {
+  return min + random() * (max - min);
 }
 
 function clonePositions(positions) {
@@ -133,11 +161,11 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function createEpochConfig() {
+function createEpochConfig(random) {
   return {
-    innerPhase: randomRange(0, Math.PI * 2),
-    outerPhase: randomRange(0, Math.PI * 2),
-    regime: EPOCH_REGIMES[Math.floor(Math.random() * EPOCH_REGIMES.length)],
+    innerPhase: randomRange(0, Math.PI * 2, random),
+    outerPhase: randomRange(0, Math.PI * 2, random),
+    regime: EPOCH_REGIMES[Math.floor(random() * EPOCH_REGIMES.length)],
   };
 }
 
@@ -198,7 +226,12 @@ function getClimateSummary(flux, climateBalance) {
 class SimulationEngine {
   constructor(options = {}) {
     this.onEpochFinalized = options.onEpochFinalized || (() => {});
+    this.runSeed = normalizeSeed(options.seed);
+    this.epochSeedGenerator = createSeededRandom(this.runSeed);
+    this.effectRandom = createSeededRandom(this.runSeed ^ 0x9e3779b9);
     this.state = {
+      runSeed: this.runSeed,
+      epochSeed: 0,
       epochs: 0,
       timeScale: 1,
       simulationTimeSeconds: 0,
@@ -249,6 +282,10 @@ class SimulationEngine {
       incrementEpochs: true,
       statusText: "Система стабильна",
     });
+  }
+
+  nextEpochSeed() {
+    return Math.floor(this.epochSeedGenerator() * 0x100000000) >>> 0;
   }
 
   setTimeScale(timeScale) {
@@ -441,6 +478,8 @@ class SimulationEngine {
     };
     this.onEpochFinalized({
       schemaVersion: 2,
+      runSeed: this.state.runSeed,
+      epochSeed: this.state.epochSeed,
       epoch: Math.max(1, this.state.epochs),
       years,
       endReason,
@@ -720,7 +759,8 @@ class SimulationEngine {
     if (incrementEpochs) {
       this.state.epochs += 1;
     }
-    this.state.epoch = createEpochConfig();
+    this.state.epochSeed = this.nextEpochSeed();
+    this.state.epoch = createEpochConfig(createSeededRandom(this.state.epochSeed));
     this.state.regimeName = this.state.epoch.regime.name;
     this.state.epochStartTimeSeconds = this.state.simulationTimeSeconds;
     this.state.epochCivilizations = [];
@@ -846,18 +886,20 @@ class SimulationEngine {
     const baseAngle = Math.atan2(velocity.y, velocity.x);
     const baseSpeed = Math.max(Math.hypot(velocity.x, velocity.y), 24);
     return Array.from({ length: count }, () => {
-      const angle = baseAngle + randomRange(-spread, spread);
-      const speed = baseSpeed * randomRange(0.74, 1.22) + randomRange(8, 34);
+      const angle = baseAngle + randomRange(-spread, spread, this.effectRandom);
+      const speed =
+        baseSpeed * randomRange(0.74, 1.22, this.effectRandom) +
+        randomRange(8, 34, this.effectRandom);
       return {
         x: origin.x,
         y: origin.y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        driftX: randomRange(-18, 18),
-        driftY: randomRange(-18, 18),
-        size: Math.max(1.1, baseSize * randomRange(0.16, 0.34)),
+        driftX: randomRange(-18, 18, this.effectRandom),
+        driftY: randomRange(-18, 18, this.effectRandom),
+        size: Math.max(1.1, baseSize * randomRange(0.16, 0.34, this.effectRandom)),
         color,
-        alpha: randomRange(0.55, 0.92),
+        alpha: randomRange(0.55, 0.92, this.effectRandom),
       };
     });
   }
@@ -1489,6 +1531,8 @@ class SimulationEngine {
 
     return {
       nowMs: this.state.nowMs,
+      runSeed: this.state.runSeed,
+      epochSeed: this.state.epochSeed,
       timeScale: this.state.timeScale,
       epochs: this.state.epochs,
       civilizations: this.state.civilizations,

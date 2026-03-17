@@ -74,6 +74,7 @@ function renderRecentEpochs(epochs) {
             <span class="epoch-badge">${epoch.regime || "без режима"}</span>
           </div>
           <p class="epoch-record-host">Дом: ${epoch.homeStar || "неизвестно"}</p>
+          <p class="epoch-record-host">Seed эпохи: ${epoch.epochSeed ?? "нет данных"}</p>
           <p class="epoch-record-reason">${epoch.endReason}</p>
           <div class="epoch-planets">
             <article class="epoch-planet">

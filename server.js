@@ -17,6 +17,7 @@ const LEGACY_LOG_FILE = path.join(LOG_DIR, "epoch-stats.ndjson");
 const LOG_FILE = path.join(LOG_DIR, "planet-epoch-stats.ndjson");
 const SIMULATION_TICK_MS = 1000 / 60;
 const SNAPSHOT_BROADCAST_MS = 1000 / 20;
+const MAX_SIMULATION_STEPS_PER_TICK = 8;
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -98,7 +99,7 @@ function buildReasonStats(entries, getYears) {
   const stats = new Map();
 
   entries.forEach((entry) => {
-    const reason = entry.reason;
+    const reason = entry.reason || entry.outcome || "Неизвестный исход";
     if (!stats.has(reason)) {
       stats.set(reason, {
         reason,
@@ -303,16 +304,19 @@ function writeSseMessage(response, payload) {
 ensureLogFile();
 
 const simulation = new SimulationEngine({
+  seed: process.env.SIMULATION_SEED,
   onEpochFinalized: appendEpochRecord,
 });
 
 const streamClients = new Set();
 const startMs = performance.now();
-let lastStepAt = startMs;
 let lastBroadcastAt = startMs;
+let simulationNowMs = 0;
+let accumulatedStepMs = 0;
+let lastStepAt = startMs;
 
 function getSimulationNowMs() {
-  return performance.now() - startMs;
+  return simulationNowMs;
 }
 
 function getSnapshot() {
@@ -334,8 +338,19 @@ function runSimulationStep() {
   const currentPerformanceMs = performance.now();
   const deltaMs = currentPerformanceMs - lastStepAt;
   lastStepAt = currentPerformanceMs;
+  accumulatedStepMs += deltaMs;
 
-  simulation.step(deltaMs, getSimulationNowMs());
+  let steps = 0;
+  while (accumulatedStepMs >= SIMULATION_TICK_MS && steps < MAX_SIMULATION_STEPS_PER_TICK) {
+    simulationNowMs += SIMULATION_TICK_MS;
+    simulation.step(SIMULATION_TICK_MS, simulationNowMs);
+    accumulatedStepMs -= SIMULATION_TICK_MS;
+    steps += 1;
+  }
+
+  if (steps === MAX_SIMULATION_STEPS_PER_TICK && accumulatedStepMs > SIMULATION_TICK_MS) {
+    accumulatedStepMs = SIMULATION_TICK_MS;
+  }
 
   if (currentPerformanceMs - lastBroadcastAt >= SNAPSHOT_BROADCAST_MS) {
     lastBroadcastAt = currentPerformanceMs;
