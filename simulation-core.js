@@ -217,6 +217,8 @@ class SimulationEngine {
       pendingEpochRestartAtMs: 0,
       planetOutcomeReason: null,
       companionOutcomeReason: null,
+      planetOutcomeYears: 0,
+      companionOutcomeYears: 0,
       previousEpochYears: 0,
       topCivilizations: [],
       climateBalance: 0,
@@ -423,12 +425,31 @@ class SimulationEngine {
       this.state.simulationTimeSeconds - this.state.epochStartTimeSeconds
     );
     this.state.previousEpochYears = years;
+    const planetB = {
+      name: "Proxima Centauri b",
+      years: this.state.planetOutcomeReason ? this.state.planetOutcomeYears : years,
+      outcome:
+        this.state.planetOutcomeReason ||
+        (this.state.planet ? "Дожила до конца эпохи" : "Итог не определен"),
+    };
+    const planetC = {
+      name: "Proxima Centauri c",
+      years: this.state.companionOutcomeReason ? this.state.companionOutcomeYears : years,
+      outcome:
+        this.state.companionOutcomeReason ||
+        (this.state.companion ? "Дожила до конца эпохи" : "Итог не определен"),
+    };
     this.onEpochFinalized({
+      schemaVersion: 2,
       epoch: Math.max(1, this.state.epochs),
       years,
       endReason,
       homeStar: stars[this.state.homeStarIndex].name,
       regime: this.state.regimeName,
+      planets: {
+        b: planetB,
+        c: planetC,
+      },
       civilizationCount: this.state.epochCivilizations.length,
       civilizations: this.state.epochCivilizations.map((entry) => ({ ...entry })),
     });
@@ -694,6 +715,8 @@ class SimulationEngine {
     this.state.pendingEpochRestartAtMs = 0;
     this.state.planetOutcomeReason = null;
     this.state.companionOutcomeReason = null;
+    this.state.planetOutcomeYears = 0;
+    this.state.companionOutcomeYears = 0;
     if (incrementEpochs) {
       this.state.epochs += 1;
     }
@@ -964,10 +987,15 @@ class SimulationEngine {
       return;
     }
 
+    const years = this.getYearsElapsed(
+      this.state.simulationTimeSeconds - this.state.epochStartTimeSeconds
+    );
     if (bodyKey === "planet") {
       this.state.planetOutcomeReason = reasonText;
+      this.state.planetOutcomeYears = years;
     } else {
       this.state.companionOutcomeReason = reasonText;
+      this.state.companionOutcomeYears = years;
     }
 
     this.removeBody(bodyKey);
@@ -1009,6 +1037,17 @@ class SimulationEngine {
 
   startStarCollisionEvent(timeMs, pair, positions) {
     const eventReason = `Столкновение ${stars[pair[0]].name} и ${stars[pair[1]].name}`;
+    const years = this.getYearsElapsed(
+      this.state.simulationTimeSeconds - this.state.epochStartTimeSeconds
+    );
+    if (!this.state.planetOutcomeReason) {
+      this.state.planetOutcomeReason = eventReason;
+      this.state.planetOutcomeYears = years;
+    }
+    if (!this.state.companionOutcomeReason) {
+      this.state.companionOutcomeReason = eventReason;
+      this.state.companionOutcomeYears = years;
+    }
     if (this.state.civilizationAlive) {
       this.recordCivilizationResult(eventReason);
       this.state.civilizationAlive = false;

@@ -12,7 +12,9 @@ const HOST = "0.0.0.0";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const ROOT_DIR = __dirname;
 const LOG_DIR = path.join(ROOT_DIR, "local");
-const LOG_FILE = path.join(LOG_DIR, "epoch-stats.ndjson");
+const ARCHIVE_DIR = path.join(LOG_DIR, "archive");
+const LEGACY_LOG_FILE = path.join(LOG_DIR, "epoch-stats.ndjson");
+const LOG_FILE = path.join(LOG_DIR, "planet-epoch-stats.ndjson");
 const SIMULATION_TICK_MS = 1000 / 60;
 const SNAPSHOT_BROADCAST_MS = 1000 / 20;
 
@@ -25,8 +27,32 @@ const MIME_TYPES = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+function getArchiveLogPath() {
+  const now = new Date();
+  const stamp = [
+    now.getUTCFullYear(),
+    String(now.getUTCMonth() + 1).padStart(2, "0"),
+    String(now.getUTCDate()).padStart(2, "0"),
+    "-",
+    String(now.getUTCHours()).padStart(2, "0"),
+    String(now.getUTCMinutes()).padStart(2, "0"),
+    String(now.getUTCSeconds()).padStart(2, "0"),
+  ].join("");
+  return path.join(ARCHIVE_DIR, `epoch-stats-legacy-${stamp}.ndjson`);
+}
+
 function ensureLogFile() {
   fs.mkdirSync(LOG_DIR, { recursive: true });
+  fs.mkdirSync(ARCHIVE_DIR, { recursive: true });
+
+  if (
+    fs.existsSync(LEGACY_LOG_FILE) &&
+    !fs.existsSync(LOG_FILE) &&
+    fs.statSync(LEGACY_LOG_FILE).size > 0
+  ) {
+    fs.renameSync(LEGACY_LOG_FILE, getArchiveLogPath());
+  }
+
   if (!fs.existsSync(LOG_FILE)) {
     fs.writeFileSync(LOG_FILE, "");
   }
@@ -106,27 +132,44 @@ function buildReasonStats(entries, getYears) {
 
 function buildStatsPayload() {
   const epochs = loadEpochRecords();
-  const civilizations = epochs.flatMap((epoch) =>
-    (epoch.civilizations || []).map((civilization) => ({
-      ...civilization,
+  const planetBRecords = epochs
+    .map((epoch) => ({
+      ...(epoch.planets?.b || {}),
       epoch: epoch.epoch,
       epochYears: epoch.years,
       epochEndReason: epoch.endReason,
+      regime: epoch.regime,
     }))
-  );
+    .filter((entry) => entry.outcome);
+  const planetCRecords = epochs
+    .map((epoch) => ({
+      ...(epoch.planets?.c || {}),
+      epoch: epoch.epoch,
+      epochYears: epoch.years,
+      epochEndReason: epoch.endReason,
+      regime: epoch.regime,
+    }))
+    .filter((entry) => entry.outcome);
 
   const totalEpochYears = epochs.reduce((sum, epoch) => sum + (epoch.years || 0), 0);
-  const totalCivilizationYears = civilizations.reduce(
-    (sum, civilization) => sum + (civilization.years || 0),
+  const totalPlanetBYears = planetBRecords.reduce(
+    (sum, planet) => sum + (planet.years || 0),
+    0
+  );
+  const totalPlanetCYears = planetCRecords.reduce(
+    (sum, planet) => sum + (planet.years || 0),
     0
   );
   const longestEpoch = epochs.reduce(
     (best, epoch) => (!best || epoch.years > best.years ? epoch : best),
     null
   );
-  const longestCivilization = civilizations.reduce(
-    (best, civilization) =>
-      !best || civilization.years > best.years ? civilization : best,
+  const longestPlanetB = planetBRecords.reduce(
+    (best, planet) => (!best || planet.years > best.years ? planet : best),
+    null
+  );
+  const longestPlanetC = planetCRecords.reduce(
+    (best, planet) => (!best || planet.years > best.years ? planet : best),
     null
   );
 
@@ -134,10 +177,11 @@ function buildStatsPayload() {
     generatedAt: new Date().toISOString(),
     totals: {
       epochs: epochs.length,
-      civilizations: civilizations.length,
       averageEpochYears: epochs.length > 0 ? totalEpochYears / epochs.length : 0,
-      averageCivilizationYears:
-        civilizations.length > 0 ? totalCivilizationYears / civilizations.length : 0,
+      averagePlanetBYears:
+        planetBRecords.length > 0 ? totalPlanetBYears / planetBRecords.length : 0,
+      averagePlanetCYears:
+        planetCRecords.length > 0 ? totalPlanetCYears / planetCRecords.length : 0,
     },
     longestEpoch:
       longestEpoch &&
@@ -145,16 +189,22 @@ function buildStatsPayload() {
         epoch: longestEpoch.epoch,
         years: longestEpoch.years,
         endReason: longestEpoch.endReason,
-        civilizationCount: longestEpoch.civilizationCount || 0,
       },
-    longestCivilization:
-      longestCivilization &&
+    longestPlanetB:
+      longestPlanetB &&
       {
-        epoch: longestCivilization.epoch,
-        globalCivilization: longestCivilization.globalCivilization,
-        epochCivilization: longestCivilization.epochCivilization,
-        years: longestCivilization.years,
-        reason: longestCivilization.reason,
+        epoch: longestPlanetB.epoch,
+        years: longestPlanetB.years,
+        outcome: longestPlanetB.outcome,
+        epochEndReason: longestPlanetB.epochEndReason,
+      },
+    longestPlanetC:
+      longestPlanetC &&
+      {
+        epoch: longestPlanetC.epoch,
+        years: longestPlanetC.years,
+        outcome: longestPlanetC.outcome,
+        epochEndReason: longestPlanetC.epochEndReason,
       },
     epochEndReasons: buildReasonStats(
       epochs.map((epoch) => ({
@@ -163,15 +213,14 @@ function buildStatsPayload() {
       })),
       (entry) => entry.years
     ),
-    civilizationEndReasons: buildReasonStats(civilizations, (entry) => entry.years || 0),
+    planetBOutcomes: buildReasonStats(planetBRecords, (entry) => entry.years || 0),
+    planetCOutcomes: buildReasonStats(planetCRecords, (entry) => entry.years || 0),
     recentEpochs: epochs
       .slice(-18)
       .reverse()
       .map((epoch) => ({
         ...epoch,
-        civilizations: [...(epoch.civilizations || [])].sort(
-          (left, right) => left.epochCivilization - right.epochCivilization
-        ),
+        planets: epoch.planets || null,
       })),
   };
 }

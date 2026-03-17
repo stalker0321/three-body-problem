@@ -1,13 +1,16 @@
 const totalEpochs = document.getElementById("totalEpochs");
-const totalCivilizations = document.getElementById("totalCivilizations");
 const averageEpochYears = document.getElementById("averageEpochYears");
-const averageCivilizationYears = document.getElementById("averageCivilizationYears");
+const averagePlanetBYears = document.getElementById("averagePlanetBYears");
+const averagePlanetCYears = document.getElementById("averagePlanetCYears");
 const longestEpochYears = document.getElementById("longestEpochYears");
 const longestEpochMeta = document.getElementById("longestEpochMeta");
-const longestCivilizationYears = document.getElementById("longestCivilizationYears");
-const longestCivilizationMeta = document.getElementById("longestCivilizationMeta");
+const longestPlanetBYears = document.getElementById("longestPlanetBYears");
+const longestPlanetBMeta = document.getElementById("longestPlanetBMeta");
+const longestPlanetCYears = document.getElementById("longestPlanetCYears");
+const longestPlanetCMeta = document.getElementById("longestPlanetCMeta");
 const epochReasonList = document.getElementById("epochReasonList");
-const civilizationReasonList = document.getElementById("civilizationReasonList");
+const planetBReasonList = document.getElementById("planetBReasonList");
+const planetCReasonList = document.getElementById("planetCReasonList");
 const recentEpochs = document.getElementById("recentEpochs");
 const statsGeneratedAt = document.getElementById("statsGeneratedAt");
 const refreshStats = document.getElementById("refreshStats");
@@ -52,30 +55,14 @@ function renderReasonList(target, entries, emptyText) {
 function renderRecentEpochs(epochs) {
   if (!epochs.length) {
     recentEpochs.innerHTML =
-      '<p class="stats-empty">Журнал эпох пока пуст. Дай симуляции дожить до первой катастрофы.</p>';
+      '<p class="stats-empty">Новый журнал пока пуст. Дай симуляции завершить первую эпоху.</p>';
     return;
   }
 
   recentEpochs.innerHTML = epochs
     .map((epoch) => {
-      const civilizations = epoch.civilizations || [];
-      const civilizationMarkup = civilizations.length
-        ? `
-          <div class="epoch-civilizations">
-            ${civilizations
-              .map(
-                (civilization) => `
-                  <article class="epoch-civilization">
-                    <strong>#${civilization.epochCivilization}</strong>
-                    <span>${formatYears(civilization.years, 1)} лет</span>
-                    <p>${civilization.reason}</p>
-                  </article>
-                `
-              )
-              .join("")}
-          </div>
-        `
-        : '<p class="stats-empty">В этой эпохе не успело возникнуть ни одной завершённой цивилизации.</p>';
+      const planetB = epoch.planets?.b || null;
+      const planetC = epoch.planets?.c || null;
 
       return `
         <article class="epoch-record">
@@ -84,12 +71,22 @@ function renderRecentEpochs(epochs) {
               <p class="eyebrow">Эпоха ${epoch.epoch}</p>
               <strong>${formatYears(epoch.years, 1)} лет</strong>
             </div>
-            <span class="epoch-badge">${epoch.civilizationCount || 0} цивилизаций</span>
+            <span class="epoch-badge">${epoch.regime || "без режима"}</span>
           </div>
           <p class="epoch-record-host">Дом: ${epoch.homeStar || "неизвестно"}</p>
-          <p class="epoch-record-host">Режим: ${epoch.regime || "неизвестно"}</p>
           <p class="epoch-record-reason">${epoch.endReason}</p>
-          ${civilizationMarkup}
+          <div class="epoch-planets">
+            <article class="epoch-planet">
+              <strong>Proxima Centauri b</strong>
+              <span>${planetB ? `${formatYears(planetB.years, 1)} лет` : "нет данных"}</span>
+              <p>${planetB ? planetB.outcome : "Итог не записан"}</p>
+            </article>
+            <article class="epoch-planet">
+              <strong>Proxima Centauri c</strong>
+              <span>${planetC ? `${formatYears(planetC.years, 1)} лет` : "нет данных"}</span>
+              <p>${planetC ? planetC.outcome : "Итог не записан"}</p>
+            </article>
+          </div>
         </article>
       `;
     })
@@ -98,12 +95,9 @@ function renderRecentEpochs(epochs) {
 
 function renderStats(payload) {
   totalEpochs.textContent = formatYears(payload.totals.epochs);
-  totalCivilizations.textContent = formatYears(payload.totals.civilizations);
   averageEpochYears.textContent = formatYears(payload.totals.averageEpochYears, 1);
-  averageCivilizationYears.textContent = formatYears(
-    payload.totals.averageCivilizationYears,
-    1
-  );
+  averagePlanetBYears.textContent = formatYears(payload.totals.averagePlanetBYears, 1);
+  averagePlanetCYears.textContent = formatYears(payload.totals.averagePlanetCYears, 1);
 
   if (payload.longestEpoch) {
     longestEpochYears.textContent = `${formatYears(payload.longestEpoch.years, 1)} лет`;
@@ -113,27 +107,25 @@ function renderStats(payload) {
     longestEpochMeta.textContent = "";
   }
 
-  if (payload.longestCivilization) {
-    longestCivilizationYears.textContent = `${formatYears(
-      payload.longestCivilization.years,
-      1
-    )} лет`;
-    longestCivilizationMeta.textContent = `Эпоха ${payload.longestCivilization.epoch} · цивилизация ${payload.longestCivilization.globalCivilization} · ${payload.longestCivilization.reason}`;
+  if (payload.longestPlanetB) {
+    longestPlanetBYears.textContent = `${formatYears(payload.longestPlanetB.years, 1)} лет`;
+    longestPlanetBMeta.textContent = `Эпоха ${payload.longestPlanetB.epoch} · ${payload.longestPlanetB.outcome}`;
   } else {
-    longestCivilizationYears.textContent = "Нет данных";
-    longestCivilizationMeta.textContent = "";
+    longestPlanetBYears.textContent = "Нет данных";
+    longestPlanetBMeta.textContent = "";
   }
 
-  renderReasonList(
-    epochReasonList,
-    payload.epochEndReasons,
-    "Пока нет завершённых эпох."
-  );
-  renderReasonList(
-    civilizationReasonList,
-    payload.civilizationEndReasons,
-    "Пока нет завершённых цивилизаций."
-  );
+  if (payload.longestPlanetC) {
+    longestPlanetCYears.textContent = `${formatYears(payload.longestPlanetC.years, 1)} лет`;
+    longestPlanetCMeta.textContent = `Эпоха ${payload.longestPlanetC.epoch} · ${payload.longestPlanetC.outcome}`;
+  } else {
+    longestPlanetCYears.textContent = "Нет данных";
+    longestPlanetCMeta.textContent = "";
+  }
+
+  renderReasonList(epochReasonList, payload.epochEndReasons, "Пока нет завершённых эпох.");
+  renderReasonList(planetBReasonList, payload.planetBOutcomes, "Пока нет записанных исходов Proxima b.");
+  renderReasonList(planetCReasonList, payload.planetCOutcomes, "Пока нет записанных исходов Proxima c.");
   renderRecentEpochs(payload.recentEpochs);
   statsGeneratedAt.textContent = `Обновлено: ${formatDate(payload.generatedAt)}`;
 }

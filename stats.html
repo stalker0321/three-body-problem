@@ -12,11 +12,11 @@
         <header class="page-header">
           <div class="page-header-copy">
             <p class="eyebrow">История симуляции</p>
-            <h1>Статистика эпох и цивилизаций</h1>
+            <h1>Статистика эпох и планет</h1>
             <p class="lead">
-              Здесь собраны итоги завершённых эпох из локального журнала сервера:
-              средние значения, главные причины катастроф и последние эпохи с
-              полным списком цивилизаций.
+              Здесь собраны итоги завершённых эпох из нового журнала сервера:
+              средняя длительность эпох, отдельные исходы для Proxima Centauri b
+              и c, а также последние эпохи с результатами по каждой планете.
             </p>
           </div>
           <div class="page-actions">
@@ -31,40 +31,49 @@
             <strong id="totalEpochs">0</strong>
           </article>
           <article class="stats-card">
-            <span class="stat-label">Цивилизаций в журнале</span>
-            <strong id="totalCivilizations">0</strong>
-          </article>
-          <article class="stats-card">
             <span class="stat-label">Средний возраст эпохи</span>
             <strong id="averageEpochYears">0</strong>
           </article>
           <article class="stats-card">
-            <span class="stat-label">Средний возраст цивилизации</span>
-            <strong id="averageCivilizationYears">0</strong>
+            <span class="stat-label">Средняя жизнь Proxima b</span>
+            <strong id="averagePlanetBYears">0</strong>
+          </article>
+          <article class="stats-card">
+            <span class="stat-label">Средняя жизнь Proxima c</span>
+            <strong id="averagePlanetCYears">0</strong>
           </article>
         </section>
 
-        <section class="stats-split">
+        <section class="stats-grid stats-grid-three">
           <article class="overlay-card stats-detail-card">
             <p class="eyebrow">Самая длинная эпоха</p>
             <strong id="longestEpochYears">Нет данных</strong>
             <p id="longestEpochMeta" class="stats-detail"></p>
           </article>
           <article class="overlay-card stats-detail-card">
-            <p class="eyebrow">Самая длинная цивилизация</p>
-            <strong id="longestCivilizationYears">Нет данных</strong>
-            <p id="longestCivilizationMeta" class="stats-detail"></p>
+            <p class="eyebrow">Самая живучая Proxima b</p>
+            <strong id="longestPlanetBYears">Нет данных</strong>
+            <p id="longestPlanetBMeta" class="stats-detail"></p>
+          </article>
+          <article class="overlay-card stats-detail-card">
+            <p class="eyebrow">Самая живучая Proxima c</p>
+            <strong id="longestPlanetCYears">Нет данных</strong>
+            <p id="longestPlanetCMeta" class="stats-detail"></p>
           </article>
         </section>
 
-        <section class="stats-split">
+        <section class="stats-grid stats-grid-three">
           <article class="overlay-card stats-panel">
             <p class="eyebrow">Причины конца эпох</p>
             <div id="epochReasonList" class="reason-list"></div>
           </article>
           <article class="overlay-card stats-panel">
-            <p class="eyebrow">Причины смерти цивилизаций</p>
-            <div id="civilizationReasonList" class="reason-list"></div>
+            <p class="eyebrow">Исходы Proxima b</p>
+            <div id="planetBReasonList" class="reason-list"></div>
+          </article>
+          <article class="overlay-card stats-panel">
+            <p class="eyebrow">Исходы Proxima c</p>
+            <div id="planetCReasonList" class="reason-list"></div>
           </article>
         </section>
 

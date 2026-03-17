@@ -348,6 +348,10 @@ h1 {
   gap: 14px;
 }
 
+.stats-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .stats-card {
   padding: 18px;
   border-radius: 20px;
@@ -489,6 +493,37 @@ h1 {
   text-transform: uppercase;
 }
 
+.epoch-planets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.epoch-planet {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(7, 11, 19, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.epoch-planet strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.epoch-planet span {
+  display: block;
+  margin-top: 4px;
+  color: var(--accent-a);
+}
+
+.epoch-planet p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .epoch-civilizations {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -529,6 +564,10 @@ h1 {
 @media (max-width: 1080px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-grid-three {
+    grid-template-columns: 1fr;
   }
 
   .stats-split {
