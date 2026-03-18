@@ -8,7 +8,7 @@ const {
   SimulationEngine,
 } = require("./simulation-core");
 
-const HOST = "0.0.0.0";
+const HOST = process.env.HOST || "0.0.0.0";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
 const ROOT_DIR = __dirname;
 const LOG_DIR = path.join(ROOT_DIR, "local");
