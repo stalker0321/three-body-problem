@@ -2,9 +2,11 @@
   const replayForm = document.getElementById("replayForm");
   const replaySeedInput = document.getElementById("replaySeed");
   const replayRandomButton = document.getElementById("replayRandom");
+  const replayCopyLinkButton = document.getElementById("replayCopyLink");
   const replayRunSeed = document.getElementById("replayRunSeed");
   const replayEpochSeed = document.getElementById("replayEpochSeed");
   const replayModeNote = document.getElementById("replayModeNote");
+  const replayShareStatus = document.getElementById("replayShareStatus");
 
   const SIMULATION_TICK_MS = 1000 / 60;
   const SNAPSHOT_BROADCAST_MS = 1000 / 20;
@@ -40,6 +42,10 @@
     window.history.replaceState({}, "", url);
   }
 
+  function getReplayShareUrl() {
+    return new URL(window.location.href).toString();
+  }
+
   function getReplaySnapshot() {
     return replayHub.engine ? replayHub.engine.getSnapshot() : null;
   }
@@ -57,6 +63,7 @@
     replayModeNote.textContent =
       `Локальный replay по input "${replayHub.currentSeedInput}". ` +
       "Серверная симуляция продолжает жить отдельно.";
+    replayShareStatus.textContent = `Ссылка для шаринга: ${getReplayShareUrl()}`;
   }
 
   function broadcastSnapshot() {
@@ -164,6 +171,21 @@
 
   replayRandomButton.addEventListener("click", () => {
     startReplay(buildRandomSeed());
+  });
+
+  replayCopyLinkButton.addEventListener("click", async () => {
+    const shareUrl = getReplayShareUrl();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        replayShareStatus.textContent = `Ссылка скопирована: ${shareUrl}`;
+        return;
+      }
+    } catch (error) {
+      console.warn("Failed to copy replay link", error);
+    }
+
+    replayShareStatus.textContent = `Скопируй вручную: ${shareUrl}`;
   });
 
   function runReplayStep(nowMs) {
