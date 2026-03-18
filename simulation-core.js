@@ -297,6 +297,56 @@ class SimulationEngine {
     return true;
   }
 
+  startReplayEpoch(epochSeed, epochNumber = 1) {
+    const normalizedEpochNumber = Math.max(1, Math.trunc(Number(epochNumber) || 1));
+
+    this.state.epochs = normalizedEpochNumber;
+    this.state.timeScale = 1;
+    this.state.simulationTimeSeconds = 0;
+    this.state.epochStartTimeSeconds = 0;
+    this.state.civilizations = 0;
+    this.state.civilizationStartTimeSeconds = 0;
+    this.state.statusText = "Replay эпохи готов";
+    this.state.statusUntilMs = 0;
+    this.state.nowMs = 0;
+    this.state.event = null;
+    this.state.effects = [];
+    this.state.pendingEpochRestartAtMs = 0;
+    this.state.planetOutcomeReason = null;
+    this.state.companionOutcomeReason = null;
+    this.state.planetOutcomeYears = 0;
+    this.state.companionOutcomeYears = 0;
+    this.state.previousEpochYears = 0;
+    this.state.topCivilizations = [];
+    this.state.climateBalance = 0;
+    this.state.lastFlux = 1;
+    this.state.tidalStress = 0;
+    this.state.tidalStressSourceIndex = null;
+    this.state.companionTidalStress = 0;
+    this.state.companionTidalStressSourceIndex = null;
+    this.state.civilizationAlive = false;
+    this.state.civilizationLogged = false;
+    this.state.previousCivilizationYears = 0;
+    this.state.pendingRebirthAtSimulationSeconds = 0;
+    this.state.pendingRebirthReason = null;
+    this.state.deathPulseStartMs = 0;
+    this.state.rebirthPulseStartMs = 0;
+    this.state.rebirthPulseUntilMs = 0;
+    this.hideBanner();
+    this.state.homeStarIndex = 2;
+    this.state.epochCivilizations = [];
+    this.state.lastPlanetInteractionTimeSeconds = 0;
+    this.state.lastCompanionInteractionTimeSeconds = 0;
+    this.state.currentPositions = [];
+
+    this.state.epochSeed = normalizeSeed(epochSeed);
+    this.state.epoch = createEpochConfig(createSeededRandom(this.state.epochSeed));
+    this.state.regimeName = this.state.epoch.regime.name;
+    this.initializeBodies(this.state.epoch);
+    this.state.currentPositions = this.getStarPositions(0, this.state.epoch);
+    this.state.lastFlux = this.computeStellarFlux(this.state.currentPositions);
+  }
+
   getStarPositions(time, epoch = this.state.epoch) {
     const innerBaseRelativeSemiMajor = stars[0].orbit + stars[1].orbit;
     const minInnerPeriastron =

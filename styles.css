@@ -530,6 +530,13 @@ h1 {
   font-size: 1rem;
 }
 
+.epoch-record-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .epoch-record-host {
   margin: 10px 0 0;
   color: var(--accent-a);

@@ -216,6 +216,14 @@ function buildStatsPayload() {
     ),
     planetBOutcomes: buildReasonStats(planetBRecords, (entry) => entry.years || 0),
     planetCOutcomes: buildReasonStats(planetCRecords, (entry) => entry.years || 0),
+    topEpochs: epochs
+      .slice()
+      .sort((left, right) => (right.years || 0) - (left.years || 0))
+      .slice(0, 10)
+      .map((epoch) => ({
+        ...epoch,
+        planets: epoch.planets || null,
+      })),
     recentEpochs: epochs
       .slice(-18)
       .reverse()
@@ -431,6 +439,10 @@ const server = http.createServer((request, response) => {
   if (request.method === "GET") {
     if (url.pathname === "/stats" || url.pathname === "/stats/") {
       serveStaticFile(response, "/stats.html");
+      return;
+    }
+    if (url.pathname === "/replay" || url.pathname === "/replay/") {
+      serveStaticFile(response, "/replays.html");
       return;
     }
     if (url.pathname === "/replays" || url.pathname === "/replays/") {

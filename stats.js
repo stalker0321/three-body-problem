@@ -11,6 +11,7 @@ const longestPlanetCMeta = document.getElementById("longestPlanetCMeta");
 const epochReasonList = document.getElementById("epochReasonList");
 const planetBReasonList = document.getElementById("planetBReasonList");
 const planetCReasonList = document.getElementById("planetCReasonList");
+const topEpochs = document.getElementById("topEpochs");
 const recentEpochs = document.getElementById("recentEpochs");
 const statsGeneratedAt = document.getElementById("statsGeneratedAt");
 const refreshStats = document.getElementById("refreshStats");
@@ -52,14 +53,21 @@ function renderReasonList(target, entries, emptyText) {
     .join("");
 }
 
-function renderRecentEpochs(epochs) {
+function buildReplayUrl(epoch) {
+  const params = new URLSearchParams();
+  params.set("runSeed", String(epoch.runSeed ?? ""));
+  params.set("epochSeed", String(epoch.epochSeed ?? ""));
+  params.set("epoch", String(epoch.epoch ?? 1));
+  return `/replay?${params.toString()}`;
+}
+
+function renderEpochCollection(target, epochs, emptyText) {
   if (!epochs.length) {
-    recentEpochs.innerHTML =
-      '<p class="stats-empty">Новый журнал пока пуст. Дай симуляции завершить первую эпоху.</p>';
+    target.innerHTML = `<p class="stats-empty">${emptyText}</p>`;
     return;
   }
 
-  recentEpochs.innerHTML = epochs
+  target.innerHTML = epochs
     .map((epoch) => {
       const planetB = epoch.planets?.b || null;
       const planetC = epoch.planets?.c || null;
@@ -74,8 +82,12 @@ function renderRecentEpochs(epochs) {
             <span class="epoch-badge">${epoch.regime || "без режима"}</span>
           </div>
           <p class="epoch-record-host">Дом: ${epoch.homeStar || "неизвестно"}</p>
+          <p class="epoch-record-host">Run seed: ${epoch.runSeed ?? "нет данных"}</p>
           <p class="epoch-record-host">Seed эпохи: ${epoch.epochSeed ?? "нет данных"}</p>
           <p class="epoch-record-reason">${epoch.endReason}</p>
+          <div class="epoch-record-actions">
+            <a class="nav-link" href="${buildReplayUrl(epoch)}">Replay</a>
+          </div>
           <div class="epoch-planets">
             <article class="epoch-planet">
               <strong>Proxima Centauri b</strong>
@@ -92,6 +104,14 @@ function renderRecentEpochs(epochs) {
       `;
     })
     .join("");
+}
+
+function renderRecentEpochs(epochs) {
+  renderEpochCollection(
+    recentEpochs,
+    epochs,
+    "Новый журнал пока пуст. Дай симуляции завершить первую эпоху."
+  );
 }
 
 function renderStats(payload) {
@@ -127,6 +147,11 @@ function renderStats(payload) {
   renderReasonList(epochReasonList, payload.epochEndReasons, "Пока нет завершённых эпох.");
   renderReasonList(planetBReasonList, payload.planetBOutcomes, "Пока нет записанных исходов Proxima b.");
   renderReasonList(planetCReasonList, payload.planetCOutcomes, "Пока нет записанных исходов Proxima c.");
+  renderEpochCollection(
+    topEpochs,
+    payload.topEpochs || [],
+    "Пока нет эпох для топа по длительности."
+  );
   renderRecentEpochs(payload.recentEpochs);
   statsGeneratedAt.textContent = `Обновлено: ${formatDate(payload.generatedAt)}`;
 }

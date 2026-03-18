@@ -24,6 +24,7 @@
     lastStepAt: performance.now(),
     lastBroadcastAt: performance.now(),
     currentSeedInput: "",
+    currentReplayRequest: null,
   };
 
   function buildRandomSeed() {
@@ -36,28 +37,62 @@
     return String(Date.now() ^ Math.trunc(Math.random() * 0xffffffff));
   }
 
-  function resolveSeedInput(value) {
+  function resolveReplayRequest(value) {
     const normalizedValue = String(value || "").trim();
     if (!normalizedValue) {
-      return buildRandomSeed();
+      return {
+        runSeed: buildRandomSeed(),
+        sourceLabel: "случайный seed",
+      };
     }
 
     try {
       const parsedUrl = new URL(normalizedValue);
+      const sharedRunSeed = parsedUrl.searchParams.get("runSeed");
+      const sharedEpochSeed = parsedUrl.searchParams.get("epochSeed");
+      const sharedEpochNumber = parsedUrl.searchParams.get("epoch");
+      if (sharedRunSeed && sharedRunSeed.trim() && sharedEpochSeed && sharedEpochSeed.trim()) {
+        return {
+          runSeed: sharedRunSeed.trim(),
+          epochSeed: sharedEpochSeed.trim(),
+          epochNumber: sharedEpochNumber ? Number(sharedEpochNumber) : null,
+          sourceLabel: normalizedValue,
+        };
+      }
+
       const sharedSeed = parsedUrl.searchParams.get("seed");
       if (sharedSeed && sharedSeed.trim()) {
-        return sharedSeed.trim();
+        return {
+          runSeed: sharedSeed.trim(),
+          sourceLabel: normalizedValue,
+        };
       }
     } catch (error) {
       // Treat non-URL input as a plain seed.
     }
 
-    return normalizedValue;
+    return {
+      runSeed: normalizedValue,
+      sourceLabel: normalizedValue,
+    };
   }
 
-  function updateReplayUrl(seed) {
+  function updateReplayUrl(replayRequest) {
     const url = new URL(window.location.href);
-    url.searchParams.set("seed", seed);
+    url.searchParams.delete("seed");
+    url.searchParams.delete("runSeed");
+    url.searchParams.delete("epochSeed");
+    url.searchParams.delete("epoch");
+
+    if (replayRequest.epochSeed) {
+      url.searchParams.set("runSeed", replayRequest.runSeed);
+      url.searchParams.set("epochSeed", replayRequest.epochSeed);
+      if (replayRequest.epochNumber) {
+        url.searchParams.set("epoch", String(replayRequest.epochNumber));
+      }
+    } else {
+      url.searchParams.set("seed", replayRequest.runSeed);
+    }
     window.history.replaceState({}, "", url);
   }
 
@@ -79,9 +114,15 @@
 
     replayRunSeed.textContent = String(snapshot.runSeed);
     replayEpochSeed.textContent = String(snapshot.epochSeed);
-    replayModeNote.textContent =
-      `Локальный replay по input "${replayHub.currentSeedInput}". ` +
-      "Серверная симуляция продолжает жить отдельно.";
+    if (replayHub.currentReplayRequest?.epochSeed) {
+      replayModeNote.textContent =
+        `Replay эпохи ${snapshot.epochs} по runSeed ${snapshot.runSeed} и epochSeed ${snapshot.epochSeed}. ` +
+        "Серверная симуляция продолжает жить отдельно.";
+    } else {
+      replayModeNote.textContent =
+        `Локальный replay по input "${replayHub.currentSeedInput}". ` +
+        "Серверная симуляция продолжает жить отдельно.";
+    }
     replayShareStatus.textContent = `Ссылка для шаринга: ${getReplayShareUrl()}`;
   }
 
@@ -97,18 +138,30 @@
     });
   }
 
-  function startReplay(seedValue) {
-    const resolvedSeed = resolveSeedInput(seedValue);
+  function startReplay(replayValue) {
+    const replayRequest =
+      typeof replayValue === "object" && replayValue !== null && replayValue.runSeed
+        ? replayValue
+        : resolveReplayRequest(replayValue);
+
     replayHub.engine = new globalThis.SimulationCore.SimulationEngine({
-      seed: resolvedSeed,
+      seed: replayRequest.runSeed,
     });
-    replayHub.currentSeedInput = resolvedSeed;
+    if (replayRequest.epochSeed) {
+      replayHub.engine.startReplayEpoch(
+        replayRequest.epochSeed,
+        replayRequest.epochNumber
+      );
+    }
+
+    replayHub.currentSeedInput = replayRequest.sourceLabel || replayRequest.runSeed;
+    replayHub.currentReplayRequest = replayRequest;
     replayHub.simulationNowMs = 0;
     replayHub.accumulatedStepMs = 0;
     replayHub.lastStepAt = performance.now();
     replayHub.lastBroadcastAt = replayHub.lastStepAt;
-    replaySeedInput.value = resolvedSeed;
-    updateReplayUrl(resolvedSeed);
+    replaySeedInput.value = replayRequest.runSeed;
+    updateReplayUrl(replayRequest);
     window.dispatchEvent(new CustomEvent("replay:reset"));
     broadcastSnapshot();
   }
@@ -189,7 +242,10 @@
   });
 
   replayRandomButton.addEventListener("click", () => {
-    startReplay(buildRandomSeed());
+    startReplay({
+      runSeed: buildRandomSeed(),
+      sourceLabel: "случайный seed",
+    });
   });
 
   replayCopyLinkButton.addEventListener("click", async () => {
@@ -244,7 +300,20 @@
     requestAnimationFrame(runReplayStep);
   }
 
-  const initialSeed = new URL(window.location.href).searchParams.get("seed") || buildRandomSeed();
-  startReplay(initialSeed);
+  const initialUrl = new URL(window.location.href);
+  const initialRunSeed = initialUrl.searchParams.get("runSeed");
+  const initialEpochSeed = initialUrl.searchParams.get("epochSeed");
+  const initialEpochNumber = initialUrl.searchParams.get("epoch");
+
+  if (initialRunSeed && initialEpochSeed) {
+    startReplay({
+      runSeed: initialRunSeed,
+      epochSeed: initialEpochSeed,
+      epochNumber: initialEpochNumber ? Number(initialEpochNumber) : null,
+      sourceLabel: getReplayShareUrl(),
+    });
+  } else {
+    startReplay(initialUrl.searchParams.get("seed") || buildRandomSeed());
+  }
   requestAnimationFrame(runReplayStep);
 })();
