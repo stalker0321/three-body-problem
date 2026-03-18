@@ -319,13 +319,8 @@ const simulation = new SimulationEngine({
 const streamClients = new Set();
 const startMs = performance.now();
 let lastBroadcastAt = startMs;
-let simulationNowMs = 0;
 let accumulatedStepMs = 0;
 let lastStepAt = startMs;
-
-function getSimulationNowMs() {
-  return simulationNowMs;
-}
 
 function getSnapshot() {
   return simulation.getSnapshot();
@@ -350,8 +345,7 @@ function runSimulationStep() {
 
   let steps = 0;
   while (accumulatedStepMs >= SIMULATION_TICK_MS && steps < MAX_SIMULATION_STEPS_PER_TICK) {
-    simulationNowMs += SIMULATION_TICK_MS;
-    simulation.step(SIMULATION_TICK_MS, simulationNowMs);
+    simulation.step(SIMULATION_TICK_MS, currentPerformanceMs);
     accumulatedStepMs -= SIMULATION_TICK_MS;
     steps += 1;
   }

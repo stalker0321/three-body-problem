@@ -20,7 +20,6 @@
   const replayHub = {
     engine: null,
     clients: new Set(),
-    simulationNowMs: 0,
     accumulatedStepMs: 0,
     lastStepAt: performance.now(),
     lastBroadcastAt: performance.now(),
@@ -186,7 +185,6 @@
 
     replayHub.currentSeedInput = replayRequest.sourceLabel || replayRequest.runSeed;
     replayHub.currentReplayRequest = replayRequest;
-    replayHub.simulationNowMs = 0;
     replayHub.accumulatedStepMs = 0;
     replayHub.lastStepAt = performance.now();
     replayHub.lastBroadcastAt = replayHub.lastStepAt;
@@ -318,8 +316,7 @@
       replayHub.accumulatedStepMs >= SIMULATION_TICK_MS &&
       steps < MAX_SIMULATION_STEPS_PER_TICK
     ) {
-      replayHub.simulationNowMs += SIMULATION_TICK_MS;
-      replayHub.engine.step(SIMULATION_TICK_MS, replayHub.simulationNowMs);
+      replayHub.engine.step(SIMULATION_TICK_MS, nowMs);
       replayHub.accumulatedStepMs -= SIMULATION_TICK_MS;
       steps += 1;
     }
