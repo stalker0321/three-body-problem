@@ -36,6 +36,25 @@
     return String(Date.now() ^ Math.trunc(Math.random() * 0xffffffff));
   }
 
+  function resolveSeedInput(value) {
+    const normalizedValue = String(value || "").trim();
+    if (!normalizedValue) {
+      return buildRandomSeed();
+    }
+
+    try {
+      const parsedUrl = new URL(normalizedValue);
+      const sharedSeed = parsedUrl.searchParams.get("seed");
+      if (sharedSeed && sharedSeed.trim()) {
+        return sharedSeed.trim();
+      }
+    } catch (error) {
+      // Treat non-URL input as a plain seed.
+    }
+
+    return normalizedValue;
+  }
+
   function updateReplayUrl(seed) {
     const url = new URL(window.location.href);
     url.searchParams.set("seed", seed);
@@ -79,7 +98,7 @@
   }
 
   function startReplay(seedValue) {
-    const resolvedSeed = String(seedValue || "").trim() || buildRandomSeed();
+    const resolvedSeed = resolveSeedInput(seedValue);
     replayHub.engine = new globalThis.SimulationCore.SimulationEngine({
       seed: resolvedSeed,
     });
