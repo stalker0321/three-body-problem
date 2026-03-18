@@ -433,6 +433,10 @@ const server = http.createServer((request, response) => {
       serveStaticFile(response, "/stats.html");
       return;
     }
+    if (url.pathname === "/replays" || url.pathname === "/replays/") {
+      serveStaticFile(response, "/replays.html");
+      return;
+    }
     serveStaticFile(response, url.pathname);
     return;
   }

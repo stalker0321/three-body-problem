@@ -3,32 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three Body Problem</title>
+    <title>Реплеи по seed</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="layout">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Серверная симуляция</p>
+          <p class="eyebrow">Локальный replay</p>
           <div class="page-actions page-actions-inline">
+            <a class="nav-link" href="/">К симуляции</a>
             <a class="nav-link" href="/stats">Статистика</a>
-            <a class="nav-link" href="/replays">Реплеи</a>
           </div>
-          <h1>Three Body Problem</h1>
+          <h1>Реплеи по seed</h1>
           <p class="lead">
-            Это одна живая серверная симуляция в духе «Задачи трёх тел». Внутри
-            системы Alpha Centauri две планеты у Proxima Centauri непрерывно
-            переживают гравитационный хаос трёх звёзд: их орбиты вытягиваются,
-            климат меняется, а каждая эпоха длится до тех пор, пока обе планеты
-            не будут разрушены или окончательно выброшены из системы.
+            Здесь можно ввести любой seed и посмотреть отдельную симуляцию локально в
+            браузере. Этот replay не влияет на серверную систему и не должен
+            совпадать у всех пользователей.
+          </p>
+          <form id="replayForm" class="replay-form">
+            <label class="replay-field">
+              <span class="stat-label">Seed для replay</span>
+              <input
+                id="replaySeed"
+                class="replay-input"
+                type="text"
+                name="seed"
+                placeholder="Например: 440, ac-proxima, fallingworlds"
+                autocomplete="off"
+              />
+            </label>
+            <button id="replayStart" type="submit" class="time-button is-active">
+              Запустить replay
+            </button>
+            <button id="replayRandom" type="button" class="time-button">
+              Случайный seed
+            </button>
+          </form>
+          <p class="replay-hint">
+            Основная серверная симуляция продолжает жить отдельно. Здесь ты просто
+            запускаешь независимый локальный прогон по выбранному seed.
           </p>
         </div>
 
         <div class="scene-frame">
-          <canvas id="universe" width="960" height="720" aria-label="Симуляция трёх звёзд"></canvas>
+          <canvas id="universe" width="960" height="720" aria-label="Replay симуляции трёх звёзд"></canvas>
           <section class="scene-panel scene-panel-left">
-            <p class="eyebrow">Эпоха системы</p>
+            <p class="eyebrow">Эпоха replay</p>
             <div class="scene-metrics">
               <article class="scene-metric">
                 <span class="stat-label">Номер эпохи</span>
@@ -48,7 +69,7 @@
                 <button type="button" class="time-button" data-speed="8">8x</button>
               </div>
             </div>
-            <p id="systemStatus" class="scene-panel-note">Система стабильна</p>
+            <p id="systemStatus" class="scene-panel-note">Локальный replay готов</p>
             <p id="regimeLabel" class="scene-panel-note">Режим эпохи: Резонансный дуэт</p>
           </section>
           <aside class="scene-overlay">
@@ -71,11 +92,27 @@
                 </article>
               </div>
             </section>
+            <section class="overlay-card">
+              <p class="eyebrow">Параметры replay</p>
+              <div class="overlay-metrics">
+                <article class="overlay-metric">
+                  <span class="stat-label">Run seed</span>
+                  <strong id="replayRunSeed">0</strong>
+                </article>
+                <article class="overlay-metric">
+                  <span class="stat-label">Epoch seed</span>
+                  <strong id="replayEpochSeed">0</strong>
+                </article>
+              </div>
+              <p id="replayModeNote">Replay работает только в этом браузере.</p>
+            </section>
           </aside>
         </div>
       </section>
     </main>
 
+    <script src="./simulation-core.js"></script>
+    <script src="./replays.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>

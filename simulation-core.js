@@ -1603,8 +1603,16 @@ class SimulationEngine {
   }
 }
 
-module.exports = {
+const simulationCoreApi = {
   ALLOWED_TIME_SCALES,
   SimulationEngine,
   stars,
 };
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = simulationCoreApi;
+}
+
+if (typeof globalThis !== "undefined") {
+  globalThis.SimulationCore = simulationCoreApi;
+}

@@ -925,6 +925,14 @@ function connectStream() {
 }
 
 window.addEventListener("resize", resizeCanvas);
+window.addEventListener("replay:reset", () => {
+  clearTrails();
+  viewerState.latestSnapshot = null;
+  viewerState.snapshotBuffer.length = 0;
+  viewerState.lastEpoch = 0;
+  viewerState.serverTimeOffsetMs = null;
+  viewerState.lastTrailSampleTimeMs = null;
+});
 speedButtons.forEach((button) => {
   button.addEventListener("click", () => {
     sendTimeScaleUpdate(Number(button.dataset.speed));

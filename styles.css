@@ -313,6 +313,51 @@ h1 {
   justify-content: flex-start;
 }
 
+.replay-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-top: 22px;
+}
+
+.replay-field {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: min(320px, 100%);
+}
+
+.replay-input {
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+}
+
+.replay-input::placeholder {
+  color: rgba(246, 243, 236, 0.42);
+}
+
+.replay-input:focus {
+  outline: none;
+  border-color: rgba(247, 221, 122, 0.42);
+  box-shadow: 0 0 0 3px rgba(247, 221, 122, 0.12);
+}
+
+.replay-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.overlay-metric {
+  min-width: 0;
+}
+
 .nav-link {
   display: inline-flex;
   align-items: center;
@@ -584,6 +629,15 @@ h1 {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .replay-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .replay-field {
+    min-width: 0;
   }
 
   .stats-grid {
