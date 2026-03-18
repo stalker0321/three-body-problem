@@ -209,9 +209,12 @@
     }
   }
 
-  const originalFetch = window.fetch.bind(window);
+  const nativeFetch = window.fetch || globalThis.fetch;
+  const originalFetch = nativeFetch ? nativeFetch.bind(window) : null;
   window.EventSource = LocalReplayEventSource;
-  window.fetch = async (input, init = {}) => {
+  globalThis.EventSource = LocalReplayEventSource;
+
+  const replayFetch = async (input, init = {}) => {
     const requestUrl = typeof input === "string" ? input : input?.url;
 
     if (requestUrl === "/api/time-scale") {
@@ -233,8 +236,14 @@
       });
     }
 
+    if (!originalFetch) {
+      throw new Error("Fetch is not available in this environment");
+    }
+
     return originalFetch(input, init);
   };
+  window.fetch = replayFetch;
+  globalThis.fetch = replayFetch;
 
   replayForm.addEventListener("submit", (event) => {
     event.preventDefault();

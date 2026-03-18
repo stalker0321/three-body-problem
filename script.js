@@ -23,7 +23,7 @@ const MIN_TRAIL_POINT_DISTANCE = 0.35;
 const MAX_TRAIL_SEGMENT_LENGTH = 6;
 const VIEW_SCALE = 0.8;
 
-const stars = [
+const sceneStars = [
   {
     name: "Alpha Centauri A",
     color: "#f7dd7a",
@@ -64,7 +64,7 @@ const companionStyle = {
 const viewerState = {
   latestSnapshot: null,
   snapshotBuffer: [],
-  trails: stars.map(() => []),
+  trails: sceneStars.map(() => []),
   planetTrail: [],
   companionTrail: [],
   eventSource: null,
@@ -528,7 +528,7 @@ function drawTrail(cx, cy, trail, star, renderServerTimeMs, currentPoint) {
     return;
   }
 
-  const referenceSize = stars[2].size;
+  const referenceSize = sceneStars[2].size;
   const trailScale = Math.min(1.32, Math.sqrt(star.size / referenceSize));
 
   ctx.save();
@@ -706,7 +706,7 @@ function drawFragments(cx, cy, fragments, elapsedMs, progress) {
 
 function drawCommonScene(cx, cy, positions, planet, companion, renderServerTimeMs) {
   viewerState.trails.forEach((trail, index) => {
-    drawTrail(cx, cy, trail, stars[index], renderServerTimeMs, positions[index]);
+    drawTrail(cx, cy, trail, sceneStars[index], renderServerTimeMs, positions[index]);
   });
   drawOrbitalTrail(cx, cy, viewerState.planetTrail, planetStyle, renderServerTimeMs, planet);
   drawOrbitalTrail(
@@ -740,7 +740,7 @@ function drawEventFrame(cx, cy, snapshot, renderServerTimeMs) {
 
   event.positions.forEach((point, index) => {
     if (!hiddenStars.has(index)) {
-      drawStar(cx + point.x, cy + point.y, stars[index]);
+      drawStar(cx + point.x, cy + point.y, sceneStars[index]);
     }
   });
 
@@ -749,7 +749,7 @@ function drawEventFrame(cx, cy, snapshot, renderServerTimeMs) {
     drawPlanetImpactFlash(
       cx + event.positions[starIndex].x,
       cy + event.positions[starIndex].y,
-      stars[starIndex],
+      sceneStars[starIndex],
       event.impactAngle,
       event.progress
     );
@@ -775,7 +775,7 @@ function drawBodyEffects(cx, cy, effects) {
       drawPlanetImpactFlash(
         cx + effect.positions[effect.starIndex].x,
         cy + effect.positions[effect.starIndex].y,
-        stars[effect.starIndex],
+        sceneStars[effect.starIndex],
         effect.impactAngle,
         effect.progress
       );
@@ -834,7 +834,7 @@ function render() {
   );
 
   snapshot.positions.forEach((point, index) => {
-    drawStar(point.x, point.y, stars[index]);
+    drawStar(point.x, point.y, sceneStars[index]);
   });
 
   if (snapshot.planet) {
