@@ -354,6 +354,16 @@ h1 {
   line-height: 1.6;
 }
 
+.replay-warning {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 176, 106, 0.12);
+  border: 1px solid rgba(255, 176, 106, 0.26);
+  color: #ffe4c7;
+  line-height: 1.55;
+}
+
 .overlay-metric {
   min-width: 0;
 }

@@ -346,7 +346,7 @@ function runSimulationStep() {
   const currentPerformanceMs = performance.now();
   const deltaMs = currentPerformanceMs - lastStepAt;
   lastStepAt = currentPerformanceMs;
-  accumulatedStepMs += deltaMs;
+  accumulatedStepMs += deltaMs * simulation.getTimeScale();
 
   let steps = 0;
   while (accumulatedStepMs >= SIMULATION_TICK_MS && steps < MAX_SIMULATION_STEPS_PER_TICK) {

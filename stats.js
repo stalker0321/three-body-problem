@@ -58,6 +58,8 @@ function buildReplayUrl(epoch) {
   params.set("runSeed", String(epoch.runSeed ?? ""));
   params.set("epochSeed", String(epoch.epochSeed ?? ""));
   params.set("epoch", String(epoch.epoch ?? 1));
+  params.set("schemaVersion", String(epoch.schemaVersion ?? ""));
+  params.set("recordedYears", String(epoch.years ?? ""));
   return `/replay?${params.toString()}`;
 }
 
@@ -84,6 +86,7 @@ function renderEpochCollection(target, epochs, emptyText) {
           <p class="epoch-record-host">Дом: ${epoch.homeStar || "неизвестно"}</p>
           <p class="epoch-record-host">Run seed: ${epoch.runSeed ?? "нет данных"}</p>
           <p class="epoch-record-host">Seed эпохи: ${epoch.epochSeed ?? "нет данных"}</p>
+          <p class="epoch-record-host">Replay schema: ${epoch.schemaVersion ?? "нет данных"}</p>
           <p class="epoch-record-reason">${epoch.endReason}</p>
           <div class="epoch-record-actions">
             <a class="nav-link" href="${buildReplayUrl(epoch)}">Replay</a>

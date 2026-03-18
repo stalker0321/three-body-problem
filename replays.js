@@ -6,6 +6,7 @@
   const replayRunSeed = document.getElementById("replayRunSeed");
   const replayEpochSeed = document.getElementById("replayEpochSeed");
   const replayModeNote = document.getElementById("replayModeNote");
+  const replayLegacyWarning = document.getElementById("replayLegacyWarning");
   const replayShareStatus = document.getElementById("replayShareStatus");
 
   const SIMULATION_TICK_MS = 1000 / 60;
@@ -56,6 +57,12 @@
           runSeed: sharedRunSeed.trim(),
           epochSeed: sharedEpochSeed.trim(),
           epochNumber: sharedEpochNumber ? Number(sharedEpochNumber) : null,
+          schemaVersion: parsedUrl.searchParams.get("schemaVersion")
+            ? Number(parsedUrl.searchParams.get("schemaVersion"))
+            : null,
+          recordedYears: parsedUrl.searchParams.get("recordedYears")
+            ? Number(parsedUrl.searchParams.get("recordedYears"))
+            : null,
           sourceLabel: normalizedValue,
         };
       }
@@ -83,12 +90,20 @@
     url.searchParams.delete("runSeed");
     url.searchParams.delete("epochSeed");
     url.searchParams.delete("epoch");
+    url.searchParams.delete("schemaVersion");
+    url.searchParams.delete("recordedYears");
 
     if (replayRequest.epochSeed) {
       url.searchParams.set("runSeed", replayRequest.runSeed);
       url.searchParams.set("epochSeed", replayRequest.epochSeed);
       if (replayRequest.epochNumber) {
         url.searchParams.set("epoch", String(replayRequest.epochNumber));
+      }
+      if (replayRequest.schemaVersion) {
+        url.searchParams.set("schemaVersion", String(replayRequest.schemaVersion));
+      }
+      if (Number.isFinite(replayRequest.recordedYears)) {
+        url.searchParams.set("recordedYears", String(replayRequest.recordedYears));
       }
     } else {
       url.searchParams.set("seed", replayRequest.runSeed);
@@ -114,10 +129,25 @@
 
     replayRunSeed.textContent = String(snapshot.runSeed);
     replayEpochSeed.textContent = String(snapshot.epochSeed);
+    replayLegacyWarning.hidden = true;
+    replayLegacyWarning.textContent = "";
     if (replayHub.currentReplayRequest?.epochSeed) {
       replayModeNote.textContent =
         `Replay эпохи ${snapshot.epochs} по runSeed ${snapshot.runSeed} и epochSeed ${snapshot.epochSeed}. ` +
         "Серверная симуляция продолжает жить отдельно.";
+      if (
+        replayHub.currentReplayRequest.schemaVersion &&
+        replayHub.currentReplayRequest.schemaVersion < 3
+      ) {
+        const recordedYears = Number.isFinite(replayHub.currentReplayRequest.recordedYears)
+          ? replayHub.currentReplayRequest.recordedYears.toFixed(1)
+          : "неизвестно";
+        replayLegacyWarning.hidden = false;
+        replayLegacyWarning.textContent =
+          `Эта эпоха записана старым replay schema v${replayHub.currentReplayRequest.schemaVersion}. ` +
+          `До детерминированного fixed-step движка точное воспроизведение не гарантируется. ` +
+          `В журнале записано ${recordedYears} лет, но replay может расходиться.`;
+      }
     } else {
       replayModeNote.textContent =
         `Локальный replay по input "${replayHub.currentSeedInput}". ` +
@@ -281,7 +311,7 @@
 
     const deltaMs = nowMs - replayHub.lastStepAt;
     replayHub.lastStepAt = nowMs;
-    replayHub.accumulatedStepMs += deltaMs;
+    replayHub.accumulatedStepMs += deltaMs * replayHub.engine.getTimeScale();
 
     let steps = 0;
     while (
@@ -319,6 +349,12 @@
       runSeed: initialRunSeed,
       epochSeed: initialEpochSeed,
       epochNumber: initialEpochNumber ? Number(initialEpochNumber) : null,
+      schemaVersion: initialUrl.searchParams.get("schemaVersion")
+        ? Number(initialUrl.searchParams.get("schemaVersion"))
+        : null,
+      recordedYears: initialUrl.searchParams.get("recordedYears")
+        ? Number(initialUrl.searchParams.get("recordedYears"))
+        : null,
       sourceLabel: getReplayShareUrl(),
     });
   } else {

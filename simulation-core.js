@@ -297,6 +297,10 @@ class SimulationEngine {
     return true;
   }
 
+  getTimeScale() {
+    return this.state.timeScale;
+  }
+
   startReplayEpoch(epochSeed, epochNumber = 1) {
     const normalizedEpochNumber = Math.max(1, Math.trunc(Number(epochNumber) || 1));
 
@@ -527,7 +531,7 @@ class SimulationEngine {
         (this.state.companion ? "Дожила до конца эпохи" : "Итог не определен"),
     };
     this.onEpochFinalized({
-      schemaVersion: 2,
+      schemaVersion: 3,
       runSeed: this.state.runSeed,
       epochSeed: this.state.epochSeed,
       epoch: Math.max(1, this.state.epochs),
@@ -1412,7 +1416,7 @@ class SimulationEngine {
       }
     }
 
-    const simulationDeltaSeconds = deltaSeconds * this.state.timeScale;
+    const simulationDeltaSeconds = deltaSeconds;
     this.state.simulationTimeSeconds += simulationDeltaSeconds;
     const time = this.state.simulationTimeSeconds - this.state.epochStartTimeSeconds;
     const positions = this.getStarPositions(time);
